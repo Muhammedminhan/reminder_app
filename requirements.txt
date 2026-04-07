@@ -1,0 +1,67 @@
+aiohttp==3.9.5
+aiohttp-retry==2.8.3
+aiosignal==1.3.1
+# amqp==5.2.0  # Removed - Celery dependency
+asgiref==3.8.1
+attrs==23.2.0
+# billiard==4.2.0  # Removed - Celery dependency
+# celery==5.4.0  # Removed - Not needed in Cloud Run
+certifi==2024.7.4
+charset-normalizer==3.3.2
+click==8.1.7
+click-didyoumean==0.3.1
+click-plugins==1.1.1
+click-repl==0.3.0
+config==0.5.1
+# cron-descriptor==1.4.3  # Removed - Celery dependency
+Django==4.2.14
+django-auditlog==3.0.0
+django-cors-headers==4.4.0
+djangorestframework==3.15.2
+djangorestframework-simplejwt==5.3.1
+graphene-django==3.2.2
+graphene==3.3
+graphql-core==3.2.3
+# django-celery-beat==2.6.0  # Removed - Not needed in Cloud Run
+# django-celery-results==2.5.1  # Removed - Not needed in Cloud Run
+django-timezone-field==6.1.0
+frozenlist==1.4.1
+graphene-django
+gunicorn==21.2.0
+idna==3.7
+# kombu==5.3.7  # Removed - Celery dependency
+multidict==6.0.5
+numpy==1.26.4
+pandas==2.2.2
+prompt-toolkit==3.0.43
+psycopg2-binary==2.9.9
+PyJWT==2.8.0
+# python-crontab==3.1.0  # Removed - Celery dependency
+python-dateutil==2.9.0.post0
+python-decouple==3.8
+python-http-client==3.3.7
+pytz==2024.1
+# redis==5.0.4  # Removed - Not needed without Celery
+requests==2.32.3
+sendgrid==6.11.0
+six==1.16.0
+sqlparse==0.5.0
+starkbank-ecdsa==2.2.0
+twilio==9.2.3
+tzdata==2024.1
+urllib3==2.2.2
+# vine==5.1.0  # Removed - Celery dependency
+wcwidth==0.2.13
+whitenoise==6.9.0
+yarl==1.9.4
+django-otp==1.5.4
+qrcode==7.4.2
+google-cloud-secret-manager==2.22.0
+dnspython==2.7.0
+google-api-python-client==2.147.0
+google-auth>=2.17.0
+djangorestframework
+djangorestframework-simplejwt
+django-oauth-toolkit==3.1.0
+python3-saml==1.16.0
+

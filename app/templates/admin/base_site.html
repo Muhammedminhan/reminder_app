@@ -1,0 +1,78 @@
+{% extends "admin/base.html" %}
+{% load i18n static %}
+
+{% block extrastyle %}{{ block.super }}
+<style>
+  .messagelist { position: relative; }
+  .messagelist li { position: relative; padding-right: 2.25em; }
+  .messagelist li .message-close { position:absolute; top:4px; right:6px; background:none; border:none; color:#444; font-size:18px; line-height:1; cursor:pointer; opacity:0.6; }
+  .messagelist li .message-close:hover { opacity:1; }
+  #message-tools { margin:4px 0 8px; text-align:right; }
+  #message-tools button { background:#eee; border:1px solid #ccc; padding:3px 10px; border-radius:4px; cursor:pointer; }
+  #message-tools button:hover { background:#e2e2e2; }
+</style>
+{% endblock %}
+
+{% block messages %}
+  {% if messages %}
+    <div id="message-tools">
+      <button type="button" id="dismiss-all-messages">{% trans 'Dismiss All' %}</button>
+    </div>
+  {% endif %}
+  {{ block.super }}
+{% endblock %}
+
+{% block extrahead %}{{ block.super }}
+<script>
+(function(){
+  function hash(str){
+    let h = 0, i, chr; if(!str) return h.toString();
+    for(i=0;i<str.length;i++){ chr=str.charCodeAt(i); h=((h<<5)-h)+chr; h|=0; }
+    return h.toString();
+  }
+  function getDismissed(){
+    try { return JSON.parse(sessionStorage.getItem('dismissed_admin_messages')||'[]'); }catch(e){ return []; }
+  }
+  function saveDismissed(arr){
+    try { sessionStorage.setItem('dismissed_admin_messages', JSON.stringify(arr.slice(0,200))); } catch(e) {}
+  }
+  function enhanceMessages(){
+    const dismissed = getDismissed();
+    const seen = new Set();
+    document.querySelectorAll('.messagelist li').forEach(function(li){
+      const rawText = (li.cloneNode(true).textContent||'').replace(/\u00d7/g,'').trim();
+      const h = hash(rawText);
+      li.dataset.msgHash = h;
+      if(dismissed.includes(h)) { li.remove(); return; }
+      if(seen.has(h)) { li.remove(); return; }
+      seen.add(h);
+    });
+    document.querySelectorAll('.messagelist li').forEach(function(li){
+      if(li.querySelector('.message-close')) return;
+      const btn = document.createElement('button');
+      btn.type='button';
+      btn.className='message-close';
+      btn.setAttribute('aria-label','Dismiss');
+      btn.innerHTML='\u00d7';
+      btn.addEventListener('click', function(){
+        const h = li.dataset.msgHash;
+        if(h){ const d = getDismissed(); if(!d.includes(h)){ d.push(h); saveDismissed(d); } }
+        li.remove();
+      });
+      li.appendChild(btn);
+    });
+  }
+  document.addEventListener('DOMContentLoaded', function(){
+    enhanceMessages();
+    const dismissAll = document.getElementById('dismiss-all-messages');
+    if(dismissAll){
+      dismissAll.addEventListener('click', function(){
+        const hashes=[];
+        document.querySelectorAll('.messagelist li').forEach(function(li){ if(li.dataset.msgHash) hashes.push(li.dataset.msgHash); li.remove(); });
+        if(hashes.length){ const d=getDismissed(); hashes.forEach(h=>{ if(!d.includes(h)) d.push(h); }); saveDismissed(d); }
+      });
+    }
+  });
+})();
+</script>
+{% endblock %}

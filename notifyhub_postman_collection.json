@@ -1,0 +1,162 @@
+{
+  "info": {
+    "name": "NotifyHub API (Local)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "GraphQL login, signup (with reCAPTCHA token when enabled), reminders, and OAuth2 token flows."
+  },
+  "variable": [
+    { "key": "base_url", "value": "http://localhost:8000" },
+    { "key": "jwt", "value": "" },
+    { "key": "oauth_access_token", "value": "" },
+    { "key": "client_id", "value": "YOUR_CLIENT_ID" },
+    { "key": "redirect_uri", "value": "http://localhost:3000/callback" },
+    { "key": "auth_code", "value": "" },
+    { "key": "code_verifier", "value": "YOUR_CODE_VERIFIER" },
+    { "key": "captcha_token", "value": "CLIENT_RECAPTCHA_TOKEN" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "request": {
+        "method": "GET",
+        "url": "{{base_url}}/health/"
+      }
+    },
+    {
+      "name": "GraphQL: Login (with optional captchaToken)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": "{{base_url}}/graphql/",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"query\": \"mutation { login(username: \\\"admin\\\", password: \\\"admin123\\\", captchaToken: \\\"{{captcha_token}}\\\") { ok code message token user { id username email } } }\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const res = pm.response.json();",
+              "const token = res?.data?.login?.token;",
+              "if (token) { pm.collectionVariables.set('jwt', token); pm.test('Saved JWT token', function(){ pm.expect(!!token).to.be.true; }); }"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "GraphQL: Signup (with captchaToken)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": "{{base_url}}/graphql/",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"query\": \"mutation { signup(username: \\\"newuser\\\", email: \\\"new@ex.com\\\", password: \\\"StrongPass1!\\\", captchaToken: \\\"{{captcha_token}}\\\") { ok code message user { id username email } } }\"\n}"
+        }
+      }
+    },
+    {
+      "name": "GraphQL: Me (JWT)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "JWT {{jwt}}" }
+        ],
+        "url": "{{base_url}}/graphql/",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"query\": \"query { me { id username email company { id name } } }\"\n}"
+        }
+      }
+    },
+    {
+      "name": "GraphQL: List Reminders (JWT)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "JWT {{jwt}}" }
+        ],
+        "url": "{{base_url}}/graphql/",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"query\": \"query { reminders { id title intervalType send completed active } }\"\n}"
+        }
+      }
+    },
+    {
+      "name": "GraphQL: Create Reminder (JWT)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "JWT {{jwt}}" }
+        ],
+        "url": "{{base_url}}/graphql/",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"query\": \"mutation { createReminder(title: \\\"Test from Postman\\\", senderEmail: \\\"test@example.com\\\", receiverEmail: \\\"user@example.com\\\", intervalType: \\\"one_time\\\") { ok code message reminder { id title uniqueId } } }\"\n}"
+        }
+      }
+    },
+    {
+      "name": "OAuth2: Token (Auth Code + PKCE)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/x-www-form-urlencoded" }
+        ],
+        "url": "{{base_url}}/o/token/",
+        "body": {
+          "mode": "urlencoded",
+          "urlencoded": [
+            { "key": "grant_type", "value": "authorization_code" },
+            { "key": "code", "value": "{{auth_code}}" },
+            { "key": "redirect_uri", "value": "{{redirect_uri}}" },
+            { "key": "client_id", "value": "{{client_id}}" },
+            { "key": "code_verifier", "value": "{{code_verifier}}" }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "const res = pm.response.json();",
+              "const at = res?.access_token;",
+              "if (at) { pm.collectionVariables.set('oauth_access_token', at); pm.test('Saved OAuth access token', function(){ pm.expect(!!at).to.be.true; }); }"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ]
+    },
+    {
+      "name": "GraphQL: Me (OAuth Bearer)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{oauth_access_token}}" }
+        ],
+        "url": "{{base_url}}/graphql/",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"query\": \"query { me { id username email } }\"\n}"
+        }
+      }
+    }
+  ]
+}
+
+

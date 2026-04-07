@@ -1,0 +1,1048 @@
+# GraphQL operations for NotifyHub frontend
+# Usage: Send to POST /graphql/ with header Authorization: Bearer <access_token>
+# All operations require authentication unless otherwise noted
+
+# ============================================
+#     QUERIES (18 total)
+# ============================================
+
+# ---- User Queries ----
+
+query Me {
+  me {
+    id
+    username
+    email
+    firstName
+    lastName
+    isActive
+    dateJoined
+    company {
+      id
+      name
+      email
+      website
+      address
+      taxIdentification
+    }
+    department {
+      id
+      name
+      company {
+        id
+        name
+      }
+    }
+    roles {
+      id
+      name
+      description
+      isActive
+      isSystemRole
+      permissionCount
+      permissions {
+        id
+        code
+        name
+        category
+      }
+    }
+    permissions
+  }
+}
+
+query Users {\
+  users {
+    id
+    username
+    email
+    firstName
+    lastName
+    isActive
+    dateJoined
+    company {
+      id
+      name
+    }
+    department {
+      id
+      name
+    }
+  }
+}
+
+query User($id: ID!) {
+  user(id: $id) {
+    id
+    username
+    email
+    firstName
+    lastName
+    isActive
+    dateJoined
+    company {
+      id
+      name
+      email
+      website
+    }
+    department {
+      id
+      name
+    }
+  }
+}
+
+# ---- Company Queries ----
+
+query Companies {
+  companies {
+    id
+    name
+    email
+    address
+    website
+    taxIdentification
+  }
+}
+
+query Company($id: ID!) {
+  company(id: $id) {
+    id
+    name
+    email
+    address
+    website
+    taxIdentification
+  }
+}
+
+# ---- Department Queries ----
+
+query Departments {
+  departments {
+    id
+    name
+    company {
+      id
+      name
+    }
+  }
+}
+
+query Department($id: ID!) {
+  department(id: $id) {
+    id
+    name
+    company {
+      id
+      name
+    }
+  }
+}
+
+# ---- Reminder Queries ----
+
+query Reminders($active: Boolean) {
+  reminders(active: $active) {
+    id
+    uniqueId
+    title
+    description
+    senderEmail
+    senderName
+    receiverEmail
+    intervalType
+    reminderStartDate
+    reminderEndDate
+    phoneNo
+    send
+    completed
+    active
+    visibleToDepartment
+    company {
+      id
+      name
+    }
+    createdBy {
+      id
+      username
+      email
+    }
+  }
+}
+
+query Reminder($id: ID!) {
+  reminder(id: $id) {
+    id
+    uniqueId
+    title
+    description
+    senderEmail
+    senderName
+    receiverEmail
+    intervalType
+    reminderStartDate
+    reminderEndDate
+    phoneNo
+    send
+    completed
+    active
+    visibleToDepartment
+    company {
+      id
+      name
+    }
+    createdBy {
+      id
+      username
+      email
+    }
+  }
+}
+
+# ---- SendGrid Domain Auth Queries ----
+
+query SendgridDomainAuths {
+  sendgridDomainAuths {
+    id
+    domain
+    subdomain
+    isVerified
+    customerId
+    dnsRecords
+    createdAt
+    lastChecked
+    user {
+      id
+      username
+      email
+    }
+  }
+}
+
+query SendgridDomainAuth($id: ID!) {
+  sendgridDomainAuth(id: $id) {
+    id
+    domain
+    subdomain
+    isVerified
+    customerId
+    dnsRecords
+    createdAt
+    lastChecked
+    siteVerificationMethod
+    siteVerificationToken
+    siteVerified
+    siteVerifiedAt
+    user {
+      id
+      username
+      email
+    }
+  }
+}
+
+# ---- Scheduled Task Queries ----
+
+query ScheduledTasks($taskType: String, $isCompleted: Boolean) {
+  scheduledTasks(taskType: $taskType, isCompleted: $isCompleted) {
+    id
+    taskType
+    taskData
+    scheduledAt
+    executedAt
+    isCompleted
+    createdAt
+    company {
+      id
+      name
+    }
+  }
+}
+
+query ScheduledTask($id: ID!) {
+  scheduledTask(id: $id) {
+    id
+    taskType
+    taskData
+    scheduledAt
+    executedAt
+    isCompleted
+    createdAt
+    company {
+      id
+      name
+    }
+  }
+}
+
+# ---- Permission Queries ----
+
+query Permissions($category: String) {
+  permissions(category: $category) {
+    id
+    code
+    name
+    category
+    description
+    isActive
+    createdAt
+    updatedAt
+  }
+}
+
+query Permission($id: ID, $code: String) {
+  permission(id: $id, code: $code) {
+    id
+    code
+    name
+    category
+    description
+    isActive
+    createdAt
+    updatedAt
+  }
+}
+
+query MyPermissions {
+  myPermissions
+}
+
+# ---- Role Queries ----
+
+query Roles($company: ID) {
+  roles(company: $company) {
+    id
+    name
+    description
+    isActive
+    isSystemRole
+    permissionCount
+    createdAt
+    updatedAt
+    company {
+      id
+      name
+    }
+    createdBy {
+      id
+      username
+    }
+    permissions {
+      id
+      code
+      name
+      category
+    }
+  }
+}
+
+query Role($id: ID!) {
+  role(id: $id) {
+    id
+    name
+    description
+    isActive
+    isSystemRole
+    permissionCount
+    createdAt
+    updatedAt
+    company {
+      id
+      name
+    }
+    createdBy {
+      id
+      username
+    }
+    permissions {
+      id
+      code
+      name
+      category
+      description
+    }
+  }
+}
+
+query MyRoles {
+  myRoles {
+    id
+    name
+    description
+    isActive
+    isSystemRole
+    permissionCount
+    permissions {
+      id
+      code
+      name
+      category
+    }
+  }
+}
+
+# ---- User Role Assignment Queries ----
+
+query UserRoles($user: ID, $company: ID) {
+  userRoles(user: $user, company: $company) {
+    id
+    isActive
+    assignedAt
+    notes
+    user {
+      id
+      username
+      email
+    }
+    role {
+      id
+      name
+      description
+    }
+    company {
+      id
+      name
+    }
+    assignedBy {
+      id
+      username
+    }
+  }
+}
+
+# ============================================
+#     MUTATIONS (27 total)
+# ============================================
+
+# ---- Reminder Mutations ----
+
+mutation CreateReminder(
+  $title: String!
+  $description: String
+  $senderEmail: String!
+  $senderName: String
+  $receiverEmail: String!
+  $intervalType: String
+  $reminderStartDate: DateTime
+  $reminderEndDate: DateTime
+  $phoneNo: String
+  $active: Boolean
+  $completed: Boolean
+  $visibleToDepartment: Boolean
+) {
+  createReminder(
+    title: $title
+    description: $description
+    senderEmail: $senderEmail
+    senderName: $senderName
+    receiverEmail: $receiverEmail
+    intervalType: $intervalType
+    reminderStartDate: $reminderStartDate
+    reminderEndDate: $reminderEndDate
+    phoneNo: $phoneNo
+    active: $active
+    completed: $completed
+    visibleToDepartment: $visibleToDepartment
+  ) {
+    ok
+    reminder {
+      id
+      title
+      active
+      visibleToDepartment
+    }
+  }
+}
+
+mutation UpdateReminder(
+  $id: ID!
+  $title: String
+  $description: String
+  $senderEmail: String
+  $senderName: String
+  $receiverEmail: String
+  $intervalType: String
+  $reminderStartDate: DateTime
+  $reminderEndDate: DateTime
+  $phoneNo: String
+  $active: Boolean
+  $send: Boolean
+  $completed: Boolean
+) {
+  updateReminder(
+    id: $id
+    title: $title
+    description: $description
+    senderEmail: $senderEmail
+    senderName: $senderName
+    receiverEmail: $receiverEmail
+    intervalType: $intervalType
+    reminderStartDate: $reminderStartDate
+    reminderEndDate: $reminderEndDate
+    phoneNo: $phoneNo
+    active: $active
+    send: $send
+    completed: $completed
+  ) {
+    ok
+    reminder {
+      id
+      title
+      active
+    }
+  }
+}
+
+mutation DeleteReminder($id: ID!) {
+  deleteReminder(id: $id) {
+    ok
+  }
+}
+
+# ---- Department Mutations ----
+
+mutation CreateDepartment($name: String!, $company: ID) {
+  createDepartment(name: $name, company: $company) {
+    ok
+    department {
+      id
+      name
+      company {
+        id
+        name
+      }
+    }
+  }
+}
+
+mutation UpdateDepartment($id: ID!, $name: String, $company: ID) {
+  updateDepartment(id: $id, name: $name, company: $company) {
+    ok
+    department {
+      id
+      name
+      company {
+        id
+        name
+      }
+    }
+  }
+}
+
+mutation DeleteDepartment($id: ID!) {
+  deleteDepartment(id: $id) {
+    ok
+  }
+}
+
+# ---- User Mutations ----
+
+mutation CreateUser(
+  $username: String!
+  $email: String
+  $password: String!
+  $department: ID
+  $isActive: Boolean
+  $company: ID
+) {
+  createUser(
+    username: $username
+    email: $email
+    password: $password
+    department: $department
+    isActive: $isActive
+    company: $company
+  ) {
+    ok
+    user {
+      id
+      username
+      email
+      firstName
+      lastName
+      isActive
+      company {
+        id
+        name
+      }
+      department {
+        id
+        name
+      }
+    }
+  }
+}
+
+mutation UpdateUser(
+  $id: ID!
+  $username: String
+  $email: String
+  $firstName: String
+  $lastName: String
+  $department: ID
+  $isActive: Boolean
+  $company: ID
+) {
+  updateUser(
+    id: $id
+    username: $username
+    email: $email
+    firstName: $firstName
+    lastName: $lastName
+    department: $department
+    isActive: $isActive
+    company: $company
+  ) {
+    ok
+    user {
+      id
+      username
+      email
+      firstName
+      lastName
+      isActive
+      company {
+        id
+        name
+      }
+      department {
+        id
+        name
+      }
+    }
+  }
+}
+
+mutation DeleteUser($id: ID!) {
+  deleteUser(id: $id) {
+    ok
+  }
+}
+
+mutation UpdateMe(
+  $firstName: String
+  $lastName: String
+  $email: String
+  $department: ID
+) {
+  updateMe(
+    firstName: $firstName
+    lastName: $lastName
+    email: $email
+    department: $department
+  ) {
+    ok
+    user {
+      id
+      username
+      email
+      firstName
+      lastName
+      department {
+        id
+        name
+      }
+    }
+  }
+}
+
+# ---- Company Mutations ----
+
+mutation CreateCompany(
+  $name: String!
+  $email: String
+  $address: String
+  $website: String
+  $taxIdentification: String
+) {
+  createCompany(
+    name: $name
+    email: $email
+    address: $address
+    website: $website
+    taxIdentification: $taxIdentification
+  ) {
+    ok
+    company {
+      id
+      name
+      email
+      address
+      website
+      taxIdentification
+    }
+  }
+}
+
+mutation UpdateCompany(
+  $id: ID!
+  $name: String
+  $email: String
+  $address: String
+  $website: String
+  $taxIdentification: String
+) {
+  updateCompany(
+    id: $id
+    name: $name
+    email: $email
+    address: $address
+    website: $website
+    taxIdentification: $taxIdentification
+  ) {
+    ok
+    company {
+      id
+      name
+      email
+      address
+      website
+      taxIdentification
+    }
+  }
+}
+
+mutation DeleteCompany($id: ID!) {
+  deleteCompany(id: $id) {
+    ok
+  }
+}
+
+# ---- SendGrid Domain Auth Mutations ----
+
+mutation CreateSendGridDomainAuth(
+  $domain: String!
+  $subdomain: String
+  $customerId: String
+) {
+  createSendGridDomainAuth(
+    domain: $domain
+    subdomain: $subdomain
+    customerId: $customerId
+  ) {
+    ok
+    sendgridDomainAuth {
+      id
+      domain
+      subdomain
+      customerId
+    }
+  }
+}
+
+mutation UpdateSendGridDomainAuth(
+  $id: ID!
+  $domain: String
+  $subdomain: String
+  $customerId: String
+  $isVerified: Boolean
+) {
+  updateSendGridDomainAuth(
+    id: $id
+    domain: $domain
+    subdomain: $subdomain
+    customerId: $customerId
+    isVerified: $isVerified
+  ) {
+    ok
+    sendgridDomainAuth {
+      id
+      domain
+      subdomain
+      isVerified
+    }
+  }
+}
+
+mutation DeleteSendGridDomainAuth($id: ID!) {
+  deleteSendGridDomainAuth(id: $id) {
+    ok
+  }
+}
+
+# ---- Scheduled Task Mutations ----
+
+mutation CreateScheduledTask(
+  $taskType: String!
+  $scheduledAt: DateTime!
+  $taskData: JSONString
+  $company: ID
+) {
+  createScheduledTask(
+    taskType: $taskType
+    scheduledAt: $scheduledAt
+    taskData: $taskData
+    company: $company
+  ) {
+    ok
+    scheduledTask {
+      id
+      taskType
+      scheduledAt
+      isCompleted
+    }
+  }
+}
+
+mutation UpdateScheduledTask(
+  $id: ID!
+  $taskType: String
+  $taskData: JSONString
+  $scheduledAt: DateTime
+  $executedAt: DateTime
+  $isCompleted: Boolean
+) {
+  updateScheduledTask(
+    id: $id
+    taskType: $taskType
+    taskData: $taskData
+    scheduledAt: $scheduledAt
+    executedAt: $executedAt
+    isCompleted: $isCompleted
+  ) {
+    ok
+    scheduledTask {
+      id
+      taskType
+      scheduledAt
+      executedAt
+      isCompleted
+    }
+  }
+}
+
+mutation DeleteScheduledTask($id: ID!) {
+  deleteScheduledTask(id: $id) {
+    ok
+  }
+}
+
+# ---- Permission Mutations (Superuser Only) ----
+
+mutation CreatePermission(
+  $code: String!
+  $name: String!
+  $category: String!
+  $description: String
+) {
+  createPermission(
+    code: $code
+    name: $name
+    category: $category
+    description: $description
+  ) {
+    ok
+    permission {
+      id
+      code
+      name
+      category
+      description
+    }
+  }
+}
+
+mutation UpdatePermission(
+  $id: ID!
+  $name: String
+  $category: String
+  $description: String
+  $isActive: Boolean
+) {
+  updatePermission(
+    id: $id
+    name: $name
+    category: $category
+    description: $description
+    isActive: $isActive
+  ) {
+    ok
+    permission {
+      id
+      code
+      name
+      category
+      isActive
+    }
+  }
+}
+
+mutation DeletePermission($id: ID!) {
+  deletePermission(id: $id) {
+    ok
+  }
+}
+
+# ---- Role Mutations ----
+
+mutation CreateRole(
+  $name: String!
+  $description: String
+  $company: ID
+  $permissionIds: [ID!]
+  $isSystemRole: Boolean
+) {
+  createRole(
+    name: $name
+    description: $description
+    company: $company
+    permissionIds: $permissionIds
+    isSystemRole: $isSystemRole
+  ) {
+    ok
+    role {
+      id
+      name
+      description
+      isActive
+      isSystemRole
+      company {
+        id
+        name
+      }
+      permissions {
+        id
+        code
+        name
+      }
+    }
+  }
+}
+
+mutation UpdateRole(
+  $id: ID!
+  $name: String
+  $description: String
+  $permissionIds: [ID!]
+  $isActive: Boolean
+) {
+  updateRole(
+    id: $id
+    name: $name
+    description: $description
+    permissionIds: $permissionIds
+    isActive: $isActive
+  ) {
+    ok
+    role {
+      id
+      name
+      description
+      isActive
+      permissions {
+        id
+        code
+        name
+      }
+    }
+  }
+}
+
+mutation DeleteRole($id: ID!) {
+  deleteRole(id: $id) {
+    ok
+  }
+}
+
+# ---- User Role Assignment Mutations ----
+
+mutation AssignRoleToUser(
+  $userId: ID!
+  $roleId: ID!
+  $notes: String
+) {
+  assignRoleToUser(
+    userId: $userId
+    roleId: $roleId
+    notes: $notes
+  ) {
+    ok
+    userRole {
+      id
+      isActive
+      assignedAt
+      notes
+      user {
+        id
+        username
+      }
+      role {
+        id
+        name
+      }
+      company {
+        id
+        name
+      }
+    }
+  }
+}
+
+mutation RemoveRoleFromUser(
+  $userId: ID!
+  $roleId: ID!
+) {
+  removeRoleFromUser(
+    userId: $userId
+    roleId: $roleId
+  ) {
+    ok
+  }
+}
+
+# ============================================
+#     USAGE EXAMPLES
+# ============================================
+
+# Example: Get current user with full details
+# query {
+#   me {
+#     id
+#     username
+#     permissions
+#     roles {
+#       name
+#       permissions {
+#         code
+#       }
+#     }
+#   }
+# }
+
+# Example: Create a reminder
+# mutation {
+#   createReminder(
+#     title: "Follow up"
+#     senderEmail: "sender@example.com"
+#     receiverEmail: "receiver@example.com"
+#     visibleToDepartment: true
+#   ) {
+#     ok
+#     reminder {
+#       id
+#       title
+#     }
+#   }
+# }
+
+# Example: Get all permissions for current user
+# query {
+#   myPermissions
+# }
+
+# Example: Assign role to user
+# mutation {
+#   assignRoleToUser(
+#     userId: "1"
+#     roleId: "2"
+#     notes: "Promoted to Manager"
+#   ) {
+#     ok
+#     userRole {
+#       id
+#       role { name }
+#     }
+#   }
+# }
