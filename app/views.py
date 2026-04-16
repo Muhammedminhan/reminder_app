@@ -332,13 +332,28 @@ def _get_oauth_user(request):
     try:
         from oauth2_provider.models import AccessToken
         auth_header = request.META.get('HTTP_AUTHORIZATION', '')
+        token = None
         if auth_header.startswith('Bearer '):
             token = auth_header[7:]
+        else:
+            token = request.GET.get('token')
+
+        with open('/tmp/auth_debug.log', 'a') as f:
+            import datetime
+            f.write(f"{datetime.datetime.now()} - Auth Check. Header: {auth_header[:20]}..., Token extracted: {token[:10] if token else 'None'}...\n")
+
+        if token:
             at = AccessToken.objects.filter(token=token).first()
-            if at and not at.is_expired():
+            if at:
+                with open('/tmp/auth_debug.log', 'a') as f:
+                    f.write(f"Match found! User: {at.user.username}\n")
                 return at.user
-    except Exception:
-        pass
+            else:
+                with open('/tmp/auth_debug.log', 'a') as f:
+                    f.write(f"Token NOT found in DB: {token[:10]}...\n")
+    except Exception as e:
+        with open('/tmp/auth_debug.log', 'a') as f:
+            f.write(f"Auth Error: {str(e)}\n")
     return None
 
 def _build_otpauth_uri(username, issuer, secret_base32):
@@ -589,11 +604,50 @@ def get_user_profile(request):
             'id': user.id,
             'username': user.username,
             'email': user.email,
+            'first_name': user.first_name,
+            'last_name': user.last_name,
             'role': role_name,
-            'avatar': '/images/profile/user-1.jpg', # Fallback/Default for now
+            'avatar': user.profile_picture.url if user.profile_picture else None,
         }
     })
 
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def upload_attachment(request):
+    """
+    Handle multi-part file upload for reminder attachments.
+    Returns the attachment ID for use in the reminder creation mutation.
+    """
+    try:
+        user = _get_oauth_user(request)
+        if not user:
+            return JsonResponse({'ok': False, 'message': 'Authentication required'}, status=401)
+        
+        if 'file' not in request.FILES:
+            return JsonResponse({'ok': False, 'message': 'No file uploaded'}, status=400)
+            
+        uploaded_file = request.FILES['file']
+        
+        from .models import ReminderAttachment
+        attachment = ReminderAttachment.objects.create(
+            file=uploaded_file,
+            filename=uploaded_file.name,
+            file_type=uploaded_file.content_type,
+            file_size=uploaded_file.size,
+            uploaded_by=user,
+            company=user.company
+        )
+        
+        return JsonResponse({
+            'ok': True,
+            'id': str(attachment.id),
+            'filename': attachment.filename,
+            'url': f"/media/{attachment.file.name}"
+        })
+    except Exception as e:
+        logger.error(f"Upload error: {e}")
+        return JsonResponse({'ok': False, 'message': str(e)}, status=500)
 
 @csrf_exempt
 @require_http_methods(["POST"])
@@ -1014,6 +1068,13 @@ def google_auth_callback(request):
         first_name = user_info.get('given_name', '')
         last_name = user_info.get('family_name', '')
         
+        # Fallback to full name if given_name/family_name are missing
+        if not first_name and user_info.get('name'):
+            name_parts = user_info.get('name', '').split(' ', 1)
+            first_name = name_parts[0]
+            if len(name_parts) > 1:
+                last_name = name_parts[1]
+        
         if not email:
             return JsonResponse({'ok': False, 'message': 'Google did not provide an email address'}, status=400)
             
@@ -1041,7 +1102,19 @@ def google_auth_callback(request):
                 company=company
             )
             user.set_unusable_password()
-            user.save()
+        else:
+            # Update existing user info from Google if missing
+            updated = False
+            if not user.first_name and first_name:
+                user.first_name = first_name
+                updated = True
+            if not user.last_name and last_name:
+                user.last_name = last_name
+                updated = True
+            if updated:
+                user.save()
+        
+        user.save()
             
         # 4. Generate local AccessToken for the Frontend
         # Find the NotifyHub Frontend application
@@ -1055,7 +1128,7 @@ def google_auth_callback(request):
             
         # Create a new access token
         local_token = secrets.token_urlsafe(32)
-        expires = timezone.now() + timedelta(seconds=3600*24) # 24h
+        expires = timezone.now() + timedelta(days=30)
         
         AccessToken.objects.create(
             user=user,

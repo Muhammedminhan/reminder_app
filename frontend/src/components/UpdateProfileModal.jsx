@@ -40,6 +40,10 @@ const INITIAL_QUERY = gql`
       company {
         name
       }
+      departments {
+        id
+        name
+      }
     }
     users {
       id
@@ -48,6 +52,10 @@ const INITIAL_QUERY = gql`
       firstName
       lastName
       profilePicture
+      departments {
+        id
+        name
+      }
     }
   }
 `;
@@ -66,8 +74,8 @@ export default function UpdateProfileModal({ isOpen, onClose, user, onSuccess })
     useEffect(() => {
         if (user) {
             setFormData({
-                firstName: user.firstName || '',
-                lastName: user.lastName || '',
+                firstName: user.firstName || user.first_name || '',
+                lastName: user.lastName || user.last_name || '',
                 email: user.email || ''
             });
         }
@@ -103,7 +111,8 @@ export default function UpdateProfileModal({ isOpen, onClose, user, onSuccess })
 
         setUploading(true);
         try {
-            const response = await fetch('http://localhost:8000/user/profile-picture/', {
+            const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
+            const response = await fetch(`${API_BASE}/user/profile-picture/`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${localStorage.getItem('access_token')}`
@@ -131,7 +140,8 @@ export default function UpdateProfileModal({ isOpen, onClose, user, onSuccess })
 
         setUploading(true);
         try {
-            const response = await fetch('http://localhost:8000/user/profile-picture/', {
+            const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
+            const response = await fetch(`${API_BASE}/user/profile-picture/`, {
                 method: 'DELETE',
                 headers: {
                     'Authorization': `Bearer ${localStorage.getItem('access_token')}`
@@ -162,8 +172,8 @@ export default function UpdateProfileModal({ isOpen, onClose, user, onSuccess })
                 <div className="modal-header" style={{ textAlign: 'center' }}>
                     <div className="profile-upload-wrapper">
                         <div className="profile-avatar-large">
-                            {user?.profilePicture ? (
-                                <img src={`${user.profilePicture}${user.profilePicture.includes('?') ? '&' : '?'}t=${Date.now()}`} alt="Profile" />
+                            {(user?.profilePicture || user?.avatar) ? (
+                                <img src={`${(user.profilePicture || user.avatar).startsWith('http') ? '' : (import.meta.env.VITE_API_BASE || 'http://localhost:8000')}${user.profilePicture || user.avatar}${(user.profilePicture || user.avatar).includes('?') ? '&' : '?'}t=${Date.now()}`} alt="Profile" />
                             ) : (
                                 <div className="avatar-placeholder">
                                     <User size={48} />
@@ -180,7 +190,7 @@ export default function UpdateProfileModal({ isOpen, onClose, user, onSuccess })
                             >
                                 <Camera size={18} />
                             </button>
-                            {user?.profilePicture && (
+                            {(user?.profilePicture || user?.avatar) && (
                                 <button
                                     type="button"
                                     className="action-btn-danger"
@@ -241,6 +251,37 @@ export default function UpdateProfileModal({ isOpen, onClose, user, onSuccess })
                                 onChange={e => setFormData({ ...formData, email: e.target.value })}
                             />
                         </div>
+                    </div>
+
+                    <div className="form-group">
+                        <label>Assigned Departments</label>
+                        <div className="depts-display-grid" style={{ 
+                            display: 'flex', 
+                            flexWrap: 'wrap', 
+                            gap: '8px', 
+                            marginTop: '8px',
+                            minHeight: '40px',
+                            padding: '8px',
+                            backgroundColor: 'var(--bg-card)',
+                            borderRadius: '8px',
+                            border: '1px solid var(--border)'
+                        }}>
+                            {user?.departments?.map(d => (
+                                <span key={d.id} className="dept-tag" style={{ 
+                                    backgroundColor: 'var(--primary-glow)', 
+                                    color: 'var(--primary)', 
+                                    padding: '4px 12px', 
+                                    borderRadius: '16px', 
+                                    fontSize: '12px',
+                                    fontWeight: '600',
+                                    border: '1px solid var(--primary)'
+                                }}>{d.name}</span>
+                            ))}
+                            {(!user?.departments || user.departments.length === 0) && (
+                                <span style={{ color: 'var(--text-dim)', fontSize: '13px' }}>No departments assigned.</span>
+                            )}
+                        </div>
+                        <small className="help-text">Contact your administrator to change department assignments.</small>
                     </div>
 
                     <div className="modal-footer">

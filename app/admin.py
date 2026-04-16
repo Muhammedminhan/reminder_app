@@ -28,12 +28,9 @@ ASSIGNABLE_COMPANY_ADMIN_GROUPS = ['User', 'Department Admin']
 class CustomUserCreationForm(UserCreationForm):
     class Meta:
         model = User
-        fields = ['username', 'password1', 'password2', 'company', 'department', 'is_active']
+        fields = ['username', 'password1', 'password2', 'company', 'departments', 'is_active']
     def save(self, commit=True):
         user = super().save(commit=False)
-        # Derive company from department if not provided
-        if not user.company and getattr(user, 'department', None) and getattr(user.department, 'company', None):
-            user.company = user.department.company
         if commit:
             user.save()
             self.save_m2m()
@@ -43,11 +40,9 @@ class CustomUserCreationForm(UserCreationForm):
 class CustomUserChangeForm(UserChangeForm):
     class Meta:
         model = User
-        fields = ['username', 'first_name', 'last_name', 'email', 'company', 'department', 'is_active']
+        fields = ['username', 'first_name', 'last_name', 'email', 'company', 'departments', 'is_active']
     def save(self, commit=True):
         user = super().save(commit=False)
-        if not user.company and getattr(user, 'department', None) and getattr(user.department, 'company', None):
-            user.company = user.department.company
         if commit:
             user.save()
             self.save_m2m()
@@ -60,13 +55,13 @@ class CustomUserAdmin(BaseUserAdmin):
     list_display = ('username','email','first_name','last_name','is_active','deleted_flag')
 
     fieldsets = BaseUserAdmin.fieldsets + (
-        (None, {'fields': ('company', 'department', 'slack_user_id')}),
+        (None, {'fields': ('company', 'departments', 'slack_user_id')}),
     )
 
     add_fieldsets = (
         (None, {
             'classes': ('wide',),
-            'fields': ('email', 'username', 'password1', 'password2', 'company', 'department', 'slack_user_id', 'is_superuser'),
+            'fields': ('email', 'username', 'password1', 'password2', 'company', 'departments', 'slack_user_id', 'is_superuser'),
         }),
     )
 
@@ -87,12 +82,12 @@ class CustomUserAdmin(BaseUserAdmin):
                 return (
                     (None, {
                         'classes': ('wide',),
-                        'fields': ('username', 'email', 'password1', 'password2', 'company', 'department', 'is_active', 'groups'),
+                        'fields': ('username', 'email', 'password1', 'password2', 'company', 'departments', 'is_active', 'groups'),
                     }),
                 )
             return (
                 (None, {
-                    'fields': ('username', 'email', 'first_name', 'last_name', 'company', 'department', 'is_active', 'groups')
+                    'fields': ('username', 'email', 'first_name', 'last_name', 'company', 'departments', 'is_active', 'groups')
                 }),
             )
         if self._is_department_admin(request):
@@ -101,13 +96,13 @@ class CustomUserAdmin(BaseUserAdmin):
                 return (
                     (None, {
                         'classes': ('wide',),
-                        'fields': ('username', 'email', 'password1', 'password2', 'department', 'is_active'),
+                        'fields': ('username', 'email', 'password1', 'password2', 'departments', 'is_active'),
                     }),
                 )
             # change form
             return (
                 (None, {
-                    'fields': ('username', 'email', 'first_name', 'last_name', 'department', 'is_active')
+                    'fields': ('username', 'email', 'first_name', 'last_name', 'departments', 'is_active')
                 }),
             )
         return super().get_fieldsets(request, obj)
@@ -121,8 +116,10 @@ class CustomUserAdmin(BaseUserAdmin):
         if self._is_department_admin(request):
             if obj is None:
                 return True
+            user_depts = request.user.departments.all()
+            obj_depts = obj.departments.all()
             return (obj.company_id == request.user.company_id and
-                    getattr(obj, 'department_id', None) == getattr(request.user, 'department_id', None)) or obj.pk == request.user.pk
+                    any(d in user_depts for d in obj_depts)) or obj.pk == request.user.pk
         return False
 
     def has_add_permission(self, request):
@@ -202,29 +199,19 @@ class CustomUserAdmin(BaseUserAdmin):
         if self._is_company_admin(request):
             return qs.filter(company=request.user.company).exclude(pk=request.user.pk)
         if self._is_department_admin(request):
-            dept_id = getattr(request.user, 'department_id', None)
-            if not dept_id:
+            user_depts = request.user.departments.all()
+            if not user_depts.exists():
                 return qs.none()
-            return qs.filter(company_id=request.user.company_id, department_id=dept_id).exclude(pk=request.user.pk)
+            return qs.filter(company_id=request.user.company_id, departments__in=user_depts).exclude(pk=request.user.pk).distinct()
         return qs.none()
 
     def save_model(self, request, obj, form, change):
-        # Force company/department for non-superusers
+        # Force company for non-superusers
         if request.user.is_authenticated and not request.user.is_superuser:
             if self._is_company_admin(request):
                 obj.company = request.user.company
             if self._is_department_admin(request):
-                # Prefer direct company; fall back to department's company
-                company = getattr(request.user, 'company', None)
-                if not company:
-                    dept = getattr(request.user, 'department', None)
-                    company = getattr(dept, 'company', None)
-                if company:
-                    obj.company = company
-                # Lock department to admin's department if present
-                dept_admin_department = getattr(request.user, 'department', None)
-                if dept_admin_department:
-                    obj.department = dept_admin_department
+                obj.company = request.user.company
         # Auto staff for company admins only
         if not change and self._is_company_admin(request):
             obj.is_staff = True
@@ -256,9 +243,9 @@ class CustomUserAdmin(BaseUserAdmin):
             for f in ['is_superuser', 'is_staff', 'company']:
                 if f not in ro:
                     ro.append(f)
-            if obj:  # department immutable on existing users
-                if 'department' not in ro:
-                    ro.append('department')
+            if obj:  # departments immutable on existing users? or just keep it there
+                if 'departments' not in ro:
+                    ro.append('departments')
         return ro
 
     def get_fields(self, request, obj=None):
@@ -275,7 +262,7 @@ class CustomUserAdmin(BaseUserAdmin):
             if 'groups' not in fields:
                 fields.append('groups')
         elif self._is_department_admin(request):
-            # Remove company & permission fields, department stays (but readonly handled separately)
+            # Remove company & permission fields, departments stays (but readonly handled separately)
             for f in ['company', 'is_staff', 'is_superuser', 'groups', 'user_permissions']:
                 if f in fields:
                     fields.remove(f)
@@ -294,12 +281,12 @@ class CustomUserAdmin(BaseUserAdmin):
     def get_form(self, request, obj=None, **kwargs):
         form = super().get_form(request, obj, **kwargs)
         if self._is_company_admin(request):
-            # Make department required
-            if 'department' in form.base_fields:
+            # Make departments required
+            if 'departments' in form.base_fields:
                 company = getattr(request.user, 'company', None)
                 if company:
-                    form.base_fields['department'].queryset = Department.objects.filter(company=company)
-                    form.base_fields['department'].required = True
+                    form.base_fields['departments'].queryset = Department.objects.filter(company=company)
+                    form.base_fields['departments'].required = True
             if 'company' in form.base_fields:
                 company_field = form.base_fields['company']
                 company = getattr(request.user, 'company', None)
@@ -321,16 +308,11 @@ class CustomUserAdmin(BaseUserAdmin):
             for perm_field in ['user_permissions', 'is_staff']:
                 form.base_fields.pop(perm_field, None)
         elif self._is_department_admin(request):
-            # Lock department/company
-            dept = getattr(request.user, 'department', None)
-            if 'department' in form.base_fields and dept:
-                form.base_fields['department'].queryset = Department.objects.filter(pk=dept.pk)
-                form.base_fields['department'].initial = dept.pk
-                form.base_fields['department'].required = True
-                try:
-                    form.base_fields['department'].empty_label = None
-                except Exception:
-                    pass
+            # Lock departments
+            user_depts = request.user.departments.all()
+            if 'departments' in form.base_fields and user_depts.exists():
+                form.base_fields['departments'].queryset = user_depts
+                form.base_fields['departments'].required = True
             # Remove company & permission fields
             for perm_field in ['company', 'is_superuser', 'is_staff', 'groups', 'user_permissions']:
                 form.base_fields.pop(perm_field, None)
@@ -532,27 +514,25 @@ class ReminderAdmin(admin.ModelAdmin):
         if not request.user.is_authenticated:
             return base_qs.none()
         if self._is_company_admin(request):
-            # Get all users in the same department and company
-            from .models import User
-            department_users = User.objects.filter(company=request.user.company, department=request.user.department)
-            return base_qs.filter(created_by__in=department_users)
+            # Get all users in the same company
+            return base_qs.filter(company=request.user.company)
         if self._is_department_admin(request):
-            dept_id = getattr(request.user, 'department_id', None)
-            if not dept_id:
+            user_depts = request.user.departments.all()
+            if not user_depts.exists():
                 return base_qs.none()
-            return base_qs.filter(company_id=request.user.company_id, created_by__department_id=dept_id)
+            return base_qs.filter(company_id=request.user.company_id, created_by__departments__in=user_depts).distinct()
         if self._is_user(request):
             if not getattr(request.user, 'company_id', None):
                 return base_qs.none()
-            dept_id = getattr(request.user, 'department_id', None)
+            user_depts = request.user.departments.all()
             base = base_qs.filter(company_id=request.user.company_id)
-            if dept_id:
-                # Show reminders created by the user OR department-visible reminders from same department
+            if user_depts.exists():
+                # Show reminders created by the user OR department-visible reminders from same departments
                 from django.db import models
                 base = base.filter(
                     models.Q(created_by_id=request.user.id) |
-                    models.Q(created_by__department_id=dept_id, visible_to_department=True)
-                )
+                    models.Q(created_by__departments__in=user_depts, visible_to_department=True)
+                ).distinct()
             else:
                 base = base.filter(created_by_id=request.user.id)
             return base
@@ -609,8 +589,11 @@ class ReminderAdmin(admin.ModelAdmin):
             if obj is None:
                 return True
             creator = getattr(obj, 'created_by', None)
-            if creator and creator.company_id == request.user.company_id and creator.department_id == request.user.department_id:
-                return True
+            if creator and creator.company_id == request.user.company_id:
+                user_depts = request.user.departments.all()
+                creator_depts = creator.departments.all()
+                if any(d in user_depts for d in creator_depts):
+                    return True
             if getattr(obj, 'created_by_id', None) == request.user.id:
                 return True
             return False
@@ -623,8 +606,11 @@ class ReminderAdmin(admin.ModelAdmin):
             return True
         # Allow viewing if same company & department
         creator = getattr(obj, 'created_by', None)
-        if creator and creator.company_id == request.user.company_id and getattr(request.user, 'department_id', None) and creator.department_id == request.user.department_id:
-            return True
+        if creator and creator.company_id == request.user.company_id:
+            user_depts = request.user.departments.all()
+            creator_depts = creator.departments.all()
+            if any(d in user_depts for d in creator_depts):
+                return True
         return False
 
     def has_add_permission(self, request):
@@ -648,7 +634,11 @@ class ReminderAdmin(admin.ModelAdmin):
             if obj is None:
                 return True
             creator = getattr(obj, 'created_by', None)
-            return creator and creator.company_id == request.user.company_id and creator.department_id == request.user.department_id
+            if creator and creator.company_id == request.user.company_id:
+                user_depts = request.user.departments.all()
+                creator_depts = creator.departments.all()
+                return any(d in user_depts for d in creator_depts)
+            return False
         if self._is_user(request):
             if obj is None:
                 return True

@@ -75,6 +75,12 @@ class Command(BaseCommand):
                 'category': 'reminders',
                 'description': 'Allow user to view all reminders in the company (not just their own)'
             },
+            {
+                'code': 'reminders.approve',
+                'name': 'Approve Reminders',
+                'category': 'reminders',
+                'description': 'Allow user to approve reminders created by subordinates'
+            },
             
             # Users
             {
@@ -313,6 +319,36 @@ class Command(BaseCommand):
             self.stdout.write(self.style.SUCCESS(f'✓ Created role: {admin_role.name}'))
         else:
             self.stdout.write(self.style.WARNING(f'↻ Role already exists: {admin_role.name}'))
+
+        # 5. Subsidiary Role (Subordinate)
+        subsidiary_role, created = Role.objects.get_or_create(
+            name='Subsidiary',
+            company=None,
+            defaults={
+                'description': 'Subsidiary role (subordinate) with create and view permissions',
+                'is_system_role': True,
+                'is_active': True
+            }
+        )
+        if created:
+            subsidiary_perms = reminder_perms.filter(code__in=['reminders.create', 'reminders.view'])
+            subsidiary_role.permissions.set(subsidiary_perms)
+            self.stdout.write(self.style.SUCCESS(f'✓ Created role: {subsidiary_role.name}'))
+
+        # 6. Approver Role
+        approver_role, created = Role.objects.get_or_create(
+            name='Approver',
+            company=None,
+            defaults={
+                'description': 'Approver role with create, view, and approve permissions',
+                'is_system_role': True,
+                'is_active': True
+            }
+        )
+        if created:
+            approver_perms = reminder_perms.filter(code__in=['reminders.create', 'reminders.view', 'reminders.approve'])
+            approver_role.permissions.set(approver_perms)
+            self.stdout.write(self.style.SUCCESS(f'✓ Created role: {approver_role.name}'))
 
         self.stdout.write(self.style.SUCCESS('\n✓ Default roles created successfully!'))
         self.stdout.write(self.style.SUCCESS('\nYou can now assign these roles to users via:'))

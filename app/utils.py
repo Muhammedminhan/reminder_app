@@ -1022,6 +1022,7 @@ def _schedule_next_reminder(reminder):
         if reminder.interval_type in (None, '', 'one_time'):
             return None
         base_start = reminder.reminder_start_date or timezone.now()
+        
         # Compute next_start based on interval type
         if reminder.interval_type == 'daily':
             next_start = base_start + timedelta(days=1)
@@ -1029,13 +1030,52 @@ def _schedule_next_reminder(reminder):
             next_start = base_start + timedelta(weeks=1)
         elif reminder.interval_type == 'monthly':
             next_start = base_start + relativedelta(months=+1)
-        elif reminder.interval_type == '6 months':
-            next_start = base_start + relativedelta(months=+6)
         elif reminder.interval_type == 'yearly':
             next_start = base_start + relativedelta(years=+1)
+        elif reminder.interval_type == 'weekday':
+            # Next weekday (Mon-Fri)
+            next_start = base_start + timedelta(days=1)
+            while next_start.weekday() >= 5: # Sat=5, Sun=6
+                next_start += timedelta(days=1)
+        elif reminder.interval_type == 'custom':
+            every = reminder.custom_repeat_every or 1
+            unit = reminder.custom_repeat_unit or 'week'
+            if unit == 'day':
+                next_start = base_start + timedelta(days=every)
+            elif unit == 'week':
+                days = reminder.custom_repeat_days
+                if not days:
+                    next_start = base_start + timedelta(weeks=every)
+                else:
+                    enabled_days = sorted([int(d) for d in days.split(',')])
+                    found = False
+                    current_google_wd = (base_start.weekday() + 1) % 7
+                    for d in enabled_days:
+                        if d > current_google_wd:
+                            next_start = base_start + timedelta(days=d - current_google_wd)
+                            found = True
+                            break
+                    if not found:
+                        next_start = base_start + timedelta(days=(7 - current_google_wd) + ((every - 1) * 7) + enabled_days[0])
+            elif unit == 'month':
+                next_start = base_start + relativedelta(months=+every)
+            elif unit == 'year':
+                next_start = base_start + relativedelta(years=+every)
+            else:
+                next_start = base_start + timedelta(weeks=every)
         else:
             logger.warning(f"Unknown interval_type '{reminder.interval_type}' for reminder {reminder.id}; skipping schedule.")
             return None
+
+        # Occurrence count and End conditions
+        next_count = (reminder.occurrence_count or 1) + 1
+        if reminder.interval_type == 'custom':
+            if reminder.custom_end_condition == 'on_date' and reminder.reminder_end_date:
+                if next_start > reminder.reminder_end_date:
+                    return None
+            elif reminder.custom_end_condition == 'after_count' and reminder.custom_end_occurrences:
+                if next_count > reminder.custom_end_occurrences:
+                    return None
         # Respect end date
         if reminder.reminder_end_date and next_start > reminder.reminder_end_date:
             logger.info(f"Next occurrence beyond end date for reminder {reminder.id}; not scheduling further.")

@@ -1,39 +1,28 @@
 import graphene
+from django.utils import timezone
 from graphene_django import DjangoObjectType
 from django.contrib.auth import get_user_model
 from django.db.models import Q
-from .models import Reminder, Company, SendGridDomainAuth, Department, ScheduledTask, Permission, Role, UserRole
+from .models import Reminder, Company, SendGridDomainAuth, Department, ScheduledTask, Permission, Role, UserRole, ReminderAttachment, ReminderDelivery, Group, JiraIntegration, Comment
 from .models import user_has_permission, user_has_role, get_user_permissions
 from django.contrib.auth import authenticate
 from django.conf import settings
 import requests
 from django.core.cache import cache
-from django.contrib.auth import get_user_model
-from django.contrib.auth.models import Group
 from oauth2_provider.models import AccessToken
 from auditlog.models import LogEntry
 
 
 def get_authenticated_user(info):
-    """Get authenticated user from OAuth2 token"""
-    auth_header = info.context.META.get('HTTP_AUTHORIZATION', '')
-    auth_header = info.context.META.get('HTTP_AUTHORIZATION', '')
-    if auth_header.startswith('Bearer '):
-        token = auth_header[7:]  # Remove 'Bearer ' prefix
-        import logging
-        logger = logging.getLogger('app')
-        try:
-            access_token = AccessToken.objects.get(token=token)
-            if access_token.is_expired():
-                logger.warning(f"TOKEN EXPIRED: {token[:10]}... User={access_token.user}")
-                return None
-            return access_token.user
-        except AccessToken.DoesNotExist:
-            logger.warning(f"TOKEN NOT FOUND: {token[:10]}... Header start: {auth_header[:15]}...")
-            pass
-    elif auth_header:
-        import logging
-        logging.getLogger('app').warning(f"MALFORMED AUTH HEADER: {auth_header[:20]}...")
+    """Unified helper for GraphQL user resolution."""
+    from .views import _get_oauth_user
+    user = _get_oauth_user(info.context)
+    if user:
+        return user
+    
+    # Session fallback
+    if hasattr(info.context, 'user') and info.context.user.is_authenticated:
+        return info.context.user
     return None
 
 
@@ -48,15 +37,30 @@ class CompanyType(DjangoObjectType):
 class UserType(DjangoObjectType):
     roles = graphene.List(lambda: RoleType)  # Forward reference
     permissions = graphene.List(graphene.String)
-    department = graphene.Field(lambda: DepartmentType)  # Forward reference
+    departments = graphene.List(lambda: DepartmentType)  # Forward reference
     
     class Meta:
         model = get_user_model()
         fields = (
             'id', 'username', 'email', 'first_name', 'last_name', 
-            'company', 'department', 'is_active', 'date_joined', 'profile_picture',
-            'slack_user_id',
+            'company', 'departments', 'is_active', 'date_joined', 'profile_picture',
+            'slack_user_id', 'manager', 'subordinates',
         )
+    
+    def resolve_username(self, info):
+        return self.username
+        
+    def resolve_email(self, info):
+        return self.email
+        
+    def resolve_first_name(self, info):
+        return self.first_name
+        
+    def resolve_last_name(self, info):
+        return self.last_name
+    
+    def resolve_subordinates(self, info):
+        return self.subordinates.all()
     
     def resolve_profile_picture(self, info):
         if self.profile_picture:
@@ -76,17 +80,54 @@ class UserType(DjangoObjectType):
     def resolve_permissions(self, info):
         """Get all permission codes for this user"""
         return get_user_permissions(self)
+    
+    def resolve_departments(self, info):
+        return self.departments.all()
 
 
 class ReminderType(DjangoObjectType):
+    visible_to_groups = graphene.List(lambda: GroupType)
+    
     class Meta:
         model = Reminder
         fields = (
             'id', 'unique_id', 'title', 'description', 'sender_email', 'sender_name',
             'receiver_email', 'interval_type', 'reminder_start_date', 'reminder_end_date',
             'phone_no', 'send', 'completed', 'company', 'created_by', 'active',
-            'visible_to_department', 'slack_channels', 'slack_user_id',
+            'visible_to_department', 'visible_to_groups', 'slack_channels', 'slack_user_id',
+            'tags', 'attachments', 'is_approved', 'approved_by', 'approved_at', 'comments',
         )
+    
+    def resolve_visible_to_groups(self, info):
+        return self.visible_to_groups.all()
+    
+    def resolve_comments(self, info):
+        # Return only top-level comments for the initial list
+        return self.comments.filter(parent__isnull=True)
+
+
+class ReminderAttachmentType(DjangoObjectType):
+    url = graphene.String()
+
+    class Meta:
+        model = ReminderAttachment
+        fields = ('id', 'filename', 'file_type', 'file_size', 'uploaded_at', 'url')
+
+    def resolve_url(self, info):
+        if self.file:
+            # Use protected media serving endpoint
+            return f"/media/{self.file.name}"
+        return None
+
+class CommentType(DjangoObjectType):
+    replies = graphene.List(lambda: CommentType)
+    
+    class Meta:
+        model = Comment
+        fields = ('id', 'reminder', 'user', 'text', 'parent', 'replies', 'created_at', 'updated_at')
+        
+    def resolve_replies(self, info):
+        return self.replies.all()
 
 
 class DepartmentType(DjangoObjectType):
@@ -154,6 +195,32 @@ class UserRoleType(DjangoObjectType):
         )
 
 
+class GroupType(DjangoObjectType):
+    members = graphene.List(lambda: UserType)
+    
+    class Meta:
+        model = Group
+        fields = (
+            'id', 'name', 'company', 'members', 'created_at', 'updated_at', 'created_by',
+        )
+
+
+class ReminderDeliveryType(DjangoObjectType):
+    class Meta:
+        model = ReminderDelivery
+        fields = (
+            'id', 'reminder', 'sent_at', 'status', 'data_snapshot', 'meta_info',
+        )
+
+
+class JiraIntegrationType(DjangoObjectType):
+    class Meta:
+        model = JiraIntegration
+        fields = (
+            'id', 'company', 'base_url', 'email', 'api_token', 'project_key', 'is_active',
+        )
+
+
 class PerformancePoint(graphene.ObjectType):
     label = graphene.String()
     value = graphene.Int()
@@ -208,30 +275,35 @@ class Query(graphene.ObjectType):
     dashboard_stats = graphene.Field(DashboardStatsType)
     slack_channels = graphene.List(SlackChannelType)
     recent_activities = graphene.List(ActivityType)
+    
+    # New Queries
+    groups = graphene.List(GroupType)
+    group = graphene.Field(GroupType, id=graphene.ID(required=True))
+    reminder_deliveries = graphene.List(ReminderDeliveryType, reminder_id=graphene.ID(required=False))
+    jira_integration = graphene.Field(JiraIntegrationType)
 
     def resolve_recent_activities(self, info):
         user = get_authenticated_user(info)
         if not user:
             return []
             
+        from auditlog.models import LogEntry
         from django.contrib.contenttypes.models import ContentType
-        from .models import Reminder
+        from .models import Reminder, Department, Group, User
         
-        # Get content type for Reminder
-        reminder_ct = ContentType.objects.get_for_model(Reminder)
-        
-        # Fetch last 10 activities for Reminders
-        # In a real multi-tenant app, we'd filter by objects belonging to the user's company
-        # but Auditlog doesn't store company info directly. We'd need a more complex join.
-        # For now, let's just get the most recent ones.
-        logs = LogEntry.objects.filter(content_type=reminder_ct).order_by('-timestamp')[:10]
+        # We want to see activities for everything related to this company.
+        # Since auditlog doesn't store company_id, we filter by actor (user) belonging to the company.
+        # This covers all actions performed by users in this company.
+        logs = LogEntry.objects.filter(
+            actor__company=user.company
+        ).select_related('actor', 'content_type').order_by('-timestamp')[:15]
         
         activities = []
         for log in logs:
             action_map = {0: 'Created', 1: 'Updated', 2: 'Deleted'}
             action_str = action_map.get(log.action, 'Modified')
             
-            # Format time (e.g. "5m ago")
+            # Format time
             from django.utils import timezone
             diff = timezone.now() - log.timestamp
             if diff.days > 0:
@@ -243,10 +315,11 @@ class Query(graphene.ObjectType):
             else:
                 time_str = "just now"
                 
+            model_name = log.content_type.model.title()
             activities.append(ActivityType(
                 id=str(log.id),
-                title=f"{action_str}: {log.object_repr}",
-                description=f"Action performed by {log.actor.username if log.actor else 'System'}",
+                title=f"{action_str} {model_name}: {log.object_repr}",
+                description=f"Action on {model_name} by {log.actor.username if log.actor else 'System'}",
                 time=time_str,
                 action=action_str
             ))
@@ -279,14 +352,28 @@ class Query(graphene.ObjectType):
         return channels
 
     def resolve_me(self, info):
+        # Force a refresh from the database to ensure all fields (email, firstName, etc.) are populated
         user = get_authenticated_user(info)
-        return user
+        if user:
+            from django.contrib.auth import get_user_model
+            try:
+                # Return a fresh instance from the DB
+                u = get_user_model().objects.get(pk=user.pk)
+                with open('/tmp/auth_debug.log', 'a') as f:
+                    import datetime
+                    f.write(f"{datetime.datetime.now()} - Resolving ME: {u.username}, Email: {u.email}, PK: {u.pk}\n")
+                return u
+            except Exception as e:
+                with open('/tmp/auth_debug.log', 'a') as f:
+                    f.write(f"ME Error: {str(e)}\n")
+                return user
+        return None
  
     def resolve_users(self, info):
         user = get_authenticated_user(info)
         if not user:
             return get_user_model().objects.none()
-        qs = get_user_model().objects.all().select_related('company', 'department')
+        qs = get_user_model().objects.all().select_related('company').prefetch_related('departments')
         if not user.is_superuser:
             if getattr(user, 'company_id', None):
                 qs = qs.filter(company_id=user.company_id)
@@ -296,7 +383,7 @@ class Query(graphene.ObjectType):
 
     def resolve_user(self, info, id):
         user = get_authenticated_user(info)
-        qs = get_user_model().objects.select_related('company', 'department')
+        qs = get_user_model().objects.select_related('company').prefetch_related('departments')
         if user and not user.is_superuser and getattr(user, 'company_id', None):
             qs = qs.filter(company_id=user.company_id)
         return qs.filter(pk=id).first()
@@ -589,12 +676,40 @@ class Query(graphene.ObjectType):
             total_users_count=total_users
         )
 
+    def resolve_groups(self, info):
+        user = get_authenticated_user(info)
+        if not user:
+            return []
+        qs = Group.objects.filter(company=user.company)
+        return qs.all()
+    
+    def resolve_group(self, info, id):
+        user = get_authenticated_user(info)
+        if not user:
+            return None
+        return Group.objects.filter(pk=id, company=user.company).first()
+    
+    def resolve_reminder_deliveries(self, info, reminder_id=None):
+        user = get_authenticated_user(info)
+        if not user:
+            return []
+        qs = ReminderDelivery.objects.filter(reminder__company=user.company)
+        if reminder_id:
+            qs = qs.filter(reminder_id=reminder_id)
+        return qs.all()
+    
+    def resolve_jira_integration(self, info):
+        user = get_authenticated_user(info)
+        if not user:
+            return None
+        return JiraIntegration.objects.filter(company=user.company).first()
+
 
 class CreateReminder(graphene.Mutation):
     class Arguments:
         title = graphene.String(required=True)
         description = graphene.String(required=False)
-        sender_email = graphene.String(required=True)
+        sender_email = graphene.String(required=False)
         sender_name = graphene.String(required=False)
         receiver_email = graphene.String(required=True)
         interval_type = graphene.String(required=False)
@@ -605,6 +720,14 @@ class CreateReminder(graphene.Mutation):
         visible_to_department = graphene.Boolean(required=False)
         slack_channels = graphene.String(required=False)
         slack_user_id = graphene.String(required=False)
+        visible_to_groups = graphene.List(graphene.ID, required=False)
+        tags = graphene.List(graphene.String, required=False)
+        attachment_ids = graphene.List(graphene.ID, required=False)
+        custom_repeat_every = graphene.Int(required=False)
+        custom_repeat_unit = graphene.String(required=False)
+        custom_repeat_days = graphene.String(required=False)
+        custom_end_condition = graphene.String(required=False)
+        custom_end_occurrences = graphene.Int(required=False)
 
     ok = graphene.Boolean()
     reminder = graphene.Field(ReminderType)
@@ -630,7 +753,15 @@ class CreateReminder(graphene.Mutation):
             if reminder.description and len(reminder.description) > 5000:
                 raise Exception('Description exceeds maximum length of 5000 characters')
                 
-            reminder.sender_email = kwargs.get('sender_email')
+            sender_email = kwargs.get('sender_email')
+            if not sender_email:
+                if user.email:
+                    sender_email = user.email
+                else:
+                    from django.conf import settings
+                    sender_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'alert@notifyhub.yougotagift.com')
+            
+            reminder.sender_email = sender_email
             if not reminder.sender_email or '@' not in reminder.sender_email:
                 raise Exception('Valid Sender email is required')
             
@@ -659,9 +790,23 @@ class CreateReminder(graphene.Mutation):
             
             if 'slack_channels' in kwargs:
                 reminder.slack_channels = kwargs.get('slack_channels')
+
+            if 'custom_repeat_every' in kwargs:
+                reminder.custom_repeat_every = kwargs.get('custom_repeat_every')
+            if 'custom_repeat_unit' in kwargs:
+                reminder.custom_repeat_unit = kwargs.get('custom_repeat_unit')
+            if 'custom_repeat_days' in kwargs:
+                reminder.custom_repeat_days = kwargs.get('custom_repeat_days')
+            if 'custom_end_condition' in kwargs:
+                reminder.custom_end_condition = kwargs.get('custom_end_condition')
+            if 'custom_end_occurrences' in kwargs:
+                reminder.custom_end_occurrences = kwargs.get('custom_end_occurrences')
             
             if 'slack_user_id' in kwargs:
                 reminder.slack_user_id = kwargs.get('slack_user_id')
+            
+            if 'tags' in kwargs:
+                reminder.tags = kwargs.get('tags')
             
             reminder.created_by = user
             if getattr(user, 'company', None):
@@ -669,6 +814,11 @@ class CreateReminder(graphene.Mutation):
             
             reminder.full_clean()  # Run Django model validation
             reminder.save()
+
+            if 'visible_to_groups' in kwargs:
+                group_ids = kwargs.get('visible_to_groups')
+                groups = Group.objects.filter(id__in=group_ids, company=user.company)
+                reminder.visible_to_groups.set(groups)
             
             if 'slack_user_id' in kwargs and kwargs['slack_user_id']:
                 user_ids = [uid.strip() for uid in kwargs['slack_user_id'].split(',') if uid.strip()]
@@ -676,6 +826,11 @@ class CreateReminder(graphene.Mutation):
                 reminder.slack_users.set(users_to_add)
             elif 'slack_user_id' in kwargs:
                 reminder.slack_users.clear()
+
+            if 'attachment_ids' in kwargs:
+                attachment_ids = kwargs.get('attachment_ids')
+                attachments = ReminderAttachment.objects.filter(id__in=attachment_ids, company=user.company)
+                reminder.attachments.set(attachments)
 
             return CreateReminder(ok=True, reminder=reminder)
         except Exception as e:
@@ -714,7 +869,11 @@ class UpdateReminder(graphene.Mutation):
         if not reminder:
             raise Exception('Reminder not found')
         for key, value in kwargs.items():
-            setattr(reminder, key, value)
+            if key == 'visible_to_groups':
+                groups = Group.objects.filter(id__in=value, company=user.company)
+                reminder.visible_to_groups.set(groups)
+            else:
+                setattr(reminder, key, value)
         reminder.save()
         
         if 'slack_user_id' in kwargs:
@@ -1405,15 +1564,21 @@ class UpdateUser(graphene.Mutation):
             # Company admins cannot change company
             kwargs.pop('company', None)
         
-        # Handle department
+        # Handle departments
+        depts_ids = kwargs.pop('departments', None)
+        if depts_ids is not None:
+            depts = Department.objects.filter(pk__in=depts_ids)
+            if not requester.is_superuser:
+                depts = depts.filter(company_id=requester.company_id)
+            user.departments.set(depts)
+        
+        # Backward compatibility for 'department' (singular) if still used by FE
         dept_id = kwargs.pop('department', None)
         if dept_id is not None:
             dept = Department.objects.filter(pk=dept_id).first()
-            if not dept:
-                raise Exception('Department not found')
-            if not requester.is_superuser and dept.company_id != requester.company_id:
-                raise Exception('Department must belong to the same company')
-            user.department = dept
+            if dept:
+                if requester.is_superuser or dept.company_id == requester.company_id:
+                    user.departments.set([dept])
         
         # Handle company (superuser only)
         company_id = kwargs.pop('company', None)
@@ -1492,21 +1657,137 @@ class DeletePermission(graphene.Mutation):
         return DeletePermission(ok=True)
 
 
-class Mutation(graphene.ObjectType):
-    create_reminder = CreateReminder.Field()
-    update_reminder = UpdateReminder.Field()
-    delete_reminder = DeleteReminder.Field()
-    create_department = CreateDepartment.Field()
-    update_department = UpdateDepartment.Field()
-    delete_department = DeleteDepartment.Field()
-    create_sendgrid_domain_auth = CreateSendGridDomainAuth.Field()
-    update_sendgrid_domain_auth = UpdateSendGridDomainAuth.Field()
-    delete_sendgrid_domain_auth = DeleteSendGridDomainAuth.Field()
-    create_scheduled_task = CreateScheduledTask.Field()
-    update_scheduled_task = UpdateScheduledTask.Field()
-    delete_scheduled_task = DeleteScheduledTask.Field()
-    
-    # User profile updates (current user) - handled above
+class CreateGroup(graphene.Mutation):
+    class Arguments:
+        name = graphene.String(required=True)
+        member_ids = graphene.List(graphene.ID, required=False)
+
+    ok = graphene.Boolean()
+    group = graphene.Field(GroupType)
+
+    def mutate(root, info, **kwargs):
+        try:
+            user = get_authenticated_user(info)
+            if not user:
+                raise Exception('Authentication required')
+            
+            name = kwargs.get('name')
+            # Handle both camelCase and snake_case for member_ids
+            member_ids = kwargs.get('memberIds') or kwargs.get('member_ids')
+
+            with open('/tmp/mutation_log.txt', 'a') as f:
+                import datetime
+                f.write(f"{datetime.datetime.now()} - Creating group: {name} for user: {user.username}, company: {user.company}, members: {member_ids}\n")
+
+            if not user.company:
+                # Assign default company if missing for the user
+                from .models import Company
+                default_company = Company.objects.first()
+                if not default_company:
+                    raise Exception('No company found in database. Please contact admin.')
+                user.company = default_company
+                user.save()
+
+            group = Group.objects.create(
+                name=name,
+                company=user.company,
+                created_by=user
+            )
+            if member_ids:
+                from django.contrib.auth import get_user_model
+                members = get_user_model().objects.filter(id__in=member_ids)
+                group.members.set(members)
+            
+            with open('/tmp/mutation_log.txt', 'a') as f:
+                f.write(f"Successfully created group {group.id}\n")
+                
+            return CreateGroup(ok=True, group=group)
+        except Exception as e:
+            # Check for unique constraint violation
+            error_msg = str(e)
+            from django.db import IntegrityError
+            if isinstance(e, IntegrityError) or "UNIQUE constraint failed" in error_msg:
+                error_msg = f"A group named '{name}' already exists in your company."
+            
+            with open('/tmp/mutation_log.txt', 'a') as f:
+                import traceback
+                f.write(f"ERROR: {error_msg}\n{traceback.format_exc()}\n")
+            raise Exception(error_msg)
+
+
+class UpdateGroup(graphene.Mutation):
+    class Arguments:
+        id = graphene.ID(required=True)
+        name = graphene.String(required=False)
+        member_ids = graphene.List(graphene.ID, required=False)
+
+    ok = graphene.Boolean()
+    group = graphene.Field(GroupType)
+
+    def mutate(root, info, id, **kwargs):
+        user = get_authenticated_user(info)
+        if not user:
+            raise Exception('Authentication required')
+        
+        group = Group.objects.filter(pk=id, company=user.company).first()
+        if not group:
+            raise Exception('Group not found')
+        
+        if 'name' in kwargs:
+            group.name = kwargs['name']
+        
+        if 'member_ids' in kwargs:
+            members = get_user_model().objects.filter(id__in=kwargs['member_ids'], company=user.company)
+            group.members.set(members)
+            
+        group.save()
+        return UpdateGroup(ok=True, group=group)
+
+
+class DeleteGroup(graphene.Mutation):
+    class Arguments:
+        id = graphene.ID(required=True)
+
+    ok = graphene.Boolean()
+
+    def mutate(root, info, id):
+        user = get_authenticated_user(info)
+        if not user:
+            raise Exception('Authentication required')
+        
+        group = Group.objects.filter(pk=id, company=user.company).first()
+        if not group:
+            raise Exception('Group not found')
+        group.delete()
+        return DeleteGroup(ok=True)
+
+
+class UpdateJiraIntegration(graphene.Mutation):
+    class Arguments:
+        base_url = graphene.String(required=True)
+        email = graphene.String(required=True)
+        api_token = graphene.String(required=True)
+        project_key = graphene.String(required=True)
+        is_active = graphene.Boolean(required=False)
+
+    ok = graphene.Boolean()
+    jira_integration = graphene.Field(JiraIntegrationType)
+
+    def mutate(root, info, **kwargs):
+        user = get_authenticated_user(info)
+        if not user:
+            raise Exception('Authentication required')
+        
+        integration, created = JiraIntegration.objects.get_or_create(
+            company=user.company,
+            defaults=kwargs
+        )
+        if not created:
+            for key, value in kwargs.items():
+                setattr(integration, key, value)
+            integration.save()
+            
+        return UpdateJiraIntegration(ok=True, jira_integration=integration)
 
 
 class CreateUser(graphene.Mutation):
@@ -1514,14 +1795,15 @@ class CreateUser(graphene.Mutation):
         username = graphene.String(required=True)
         email = graphene.String(required=False)
         password = graphene.String(required=True)
-        department = graphene.ID(required=False)
+        departments = graphene.List(graphene.ID, required=False)
+        department = graphene.ID(required=False)  # Backward compatibility
         is_active = graphene.Boolean(required=False)
         company = graphene.ID(required=False)  # Superuser only
 
     ok = graphene.Boolean()
     user = graphene.Field(UserType)
 
-    def mutate(root, info, username, password, email=None, department=None, is_active=True, company=None):
+    def mutate(root, info, username, password, email=None, departments=None, department=None, is_active=True, company=None):
         from .utils import is_rate_limited
         from django.conf import settings
         
@@ -1551,15 +1833,6 @@ class CreateUser(graphene.Mutation):
             if not target_company_id:
                 raise Exception('Requester must belong to a company to create users')
 
-        # Validate department (if provided)
-        dept_obj = None
-        if department is not None:
-            dept_obj = Department.objects.filter(pk=department).first()
-            if not dept_obj:
-                raise Exception('Department not found')
-            if getattr(dept_obj, 'company_id', None) != target_company_id:
-                raise Exception('Department must belong to the target company')
-
         # Create user
         UserModel = get_user_model()
         new_user = UserModel.objects.create_user(
@@ -1571,11 +1844,16 @@ class CreateUser(graphene.Mutation):
             new_user.company_id = target_company_id
         except Exception:
             pass
-        if dept_obj:
-            try:
-                new_user.department = dept_obj
-            except Exception:
-                pass
+            
+        # Handle departments
+        if departments:
+            depts = Department.objects.filter(id__in=departments, company_id=target_company_id)
+            new_user.departments.set(depts)
+        elif department:
+            dept_obj = Department.objects.filter(pk=department, company_id=target_company_id).first()
+            if dept_obj:
+                new_user.departments.set([dept_obj])
+
         try:
             new_user.is_active = bool(is_active)
         except Exception:
@@ -1584,7 +1862,8 @@ class CreateUser(graphene.Mutation):
 
         # Add to 'User' group
         try:
-            user_group, _ = Group.objects.get_or_create(name='User')
+            from django.contrib.auth.models import Group as DjangoGroup
+            user_group, _ = DjangoGroup.objects.get_or_create(name='User')
             new_user.groups.add(user_group)
         except Exception:
             pass
@@ -1597,6 +1876,7 @@ class UpdateMe(graphene.Mutation):
         first_name = graphene.String(required=False)
         last_name = graphene.String(required=False)
         email = graphene.String(required=False)
+        departments = graphene.List(graphene.ID, required=False)
         department = graphene.ID(required=False)
 
     ok = graphene.Boolean()
@@ -1607,29 +1887,102 @@ class UpdateMe(graphene.Mutation):
         if not user:
             raise Exception('Authentication required')
 
-        # If department change is requested, ensure it belongs to same company
+        # Handle departments
+        depts_ids = kwargs.pop('departments', None)
+        if depts_ids is not None:
+            depts = Department.objects.filter(pk__in=depts_ids)
+            if not user.is_superuser:
+                depts = depts.filter(company_id=user.company_id)
+            user.departments.set(depts)
+        
         dept_id = kwargs.pop('department', None)
         if dept_id is not None:
             dept = Department.objects.filter(pk=dept_id).first()
-            if not dept:
-                raise Exception('Department not found')
-            if not user.is_superuser:
-                if getattr(user, 'company_id', None) != getattr(dept, 'company_id', None):
-                    raise Exception('Cannot move to a department outside your company')
-            user.department = dept
+            if dept:
+                if user.is_superuser or dept.company_id == user.company_id:
+                    user.departments.set([dept])
 
-        if 'first_name' in kwargs:
-            user.first_name = kwargs.get('first_name')
-        if 'last_name' in kwargs:
-            user.last_name = kwargs.get('last_name')
-        if 'email' in kwargs:
-            user.email = kwargs.get('email')
+        # Map camelCase from frontend if necessary, or just use the kwarg keys
+        # Graphene-Django's default is to pass them as snake_case if they were defined in Arguments
         
-        for key, value in kwargs.items():
-            if value is not None and hasattr(user, key):
-                setattr(user, key, value)
+        first_name = kwargs.get('first_name')
+        if first_name is not None:
+            user.first_name = first_name
+            
+        last_name = kwargs.get('last_name')
+        if last_name is not None:
+            user.last_name = last_name
+            
+        email = kwargs.get('email')
+        if email is not None:
+            user.email = email
+
         user.save()
         return UpdateMe(ok=True, user=user)
+
+
+class ApproveReminder(graphene.Mutation):
+    class Arguments:
+        id = graphene.ID(required=True)
+
+    ok = graphene.Boolean()
+    reminder = graphene.Field(ReminderType)
+
+    def mutate(root, info, id):
+        user = get_authenticated_user(info)
+        if not user:
+            raise Exception('Authentication required')
+            
+        reminder = Reminder.objects.filter(pk=id).first()
+        if not reminder:
+            raise Exception('Reminder not found')
+            
+        # Check permissions
+        can_approve = user_has_permission(user, 'reminders.approve')
+        
+        # Check if subordinates logic applies (if reminder creator has this user as manager)
+        is_manager = reminder.created_by and reminder.created_by.manager == user
+        
+        # Superusers can approve anything, Approvers can approve their subordinates' reminders
+        if not user.is_superuser and not (can_approve and is_manager):
+            raise Exception('Not authorized to approve this reminder')
+
+        reminder.is_approved = True
+        reminder.approved_by = user
+        reminder.approved_at = timezone.now()
+        reminder.completed = True
+        reminder.save()
+
+        return ApproveReminder(ok=True, reminder=reminder)
+
+
+class CreateComment(graphene.Mutation):
+    class Arguments:
+        reminder_id = graphene.ID(required=True)
+        text = graphene.String(required=True)
+        parent_id = graphene.ID(required=False)
+
+    ok = graphene.Boolean()
+    comment = graphene.Field(CommentType)
+
+    def mutate(root, info, reminder_id, text, parent_id=None):
+        user = get_authenticated_user(info)
+        if not user:
+            raise Exception('Authentication required')
+            
+        reminder = Reminder.objects.filter(pk=reminder_id).first()
+        if not reminder:
+            raise Exception('Reminder not found')
+            
+        comment = Comment(
+            reminder=reminder,
+            user=user,
+            text=text,
+            parent_id=parent_id
+        )
+        comment.save()
+        
+        return CreateComment(ok=True, comment=comment)
 
 
 class Mutation(graphene.ObjectType):
@@ -1654,6 +2007,10 @@ class Mutation(graphene.ObjectType):
     delete_user = DeleteUser.Field()
     update_me = UpdateMe.Field()
     
+    # Custom business logic mutations
+    approve_reminder = ApproveReminder.Field()
+    create_comment = CreateComment.Field()
+    
     # SendGrid Domain Auth mutations
     create_sendgrid_domain_auth = CreateSendGridDomainAuth.Field()
     update_sendgrid_domain_auth = UpdateSendGridDomainAuth.Field()
@@ -1673,6 +2030,12 @@ class Mutation(graphene.ObjectType):
     delete_role = DeleteRole.Field()
     assign_role_to_user = AssignRoleToUser.Field()
     remove_role_from_user = RemoveRoleFromUser.Field()
+    
+    # Group mutations
+    create_group = CreateGroup.Field()
+    update_group = UpdateGroup.Field()
+    delete_group = DeleteGroup.Field()
+    update_jira_integration = UpdateJiraIntegration.Field()
 
 
 schema = graphene.Schema(query=Query, mutation=Mutation)

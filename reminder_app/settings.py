@@ -31,18 +31,22 @@ SECRET_KEY = config('SECRET_KEY', default=os.environ.get('SECRET_KEY', 'change-m
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config('DEBUG', default=False, cast=bool)
 
-ALLOWED_HOSTS = ['*','.notifyhub.com', 'notifyhub.ferryswiss.com', '.ferryswiss.com', '.admin.ferryswiss.com', 'notifyhub-1028525309597.us-central1.run.app']
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1', cast=lambda v: [s.strip() for s in v.split(',')])
+if DEBUG:
+    ALLOWED_HOSTS += ['*', 'localhost', '127.0.0.1', '0.0.0.0']
 
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
-CSRF_COOKIE_SECURE = not DEBUG
-SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = config('CSRF_COOKIE_SECURE', default=not DEBUG, cast=bool)
+SESSION_COOKIE_SECURE = config('SESSION_COOKIE_SECURE', default=not DEBUG, cast=bool)
 
 CSRF_TRUSTED_ORIGINS = [
     'https://notifyhub-696620670636.us-central1.run.app',
     'http://localhost:8000',
     'http://127.0.0.1:8000',
     'http://0.0.0.0:8000',
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
 ]
 
 # Application definition
@@ -236,11 +240,11 @@ SECURE_HSTS_INCLUDE_SUBDOMAINS = True
 SECURE_HSTS_PRELOAD = True
 
 # Production SSL and Cookies (secure defaults)
-if not DEBUG:
-    SECURE_SSL_REDIRECT = config('SECURE_SSL_REDIRECT', default=True, cast=bool)
+SECURE_SSL_REDIRECT = config('SECURE_SSL_REDIRECT', default=not DEBUG, cast=bool)
+# Ensure cookies are secure in prod or if explicitly requested
+if not DEBUG or config('FORCE_SECURE_COOKIES', default=False, cast=bool):
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
-    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
     SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
 
 # JWT settings

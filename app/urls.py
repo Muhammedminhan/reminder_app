@@ -21,6 +21,7 @@ from .views import (
     forgot_password,
     reset_password,
     upload_profile_picture,
+    upload_attachment,
     google_auth_init,
     google_auth_callback,
     serve_protected_media,
@@ -49,6 +50,7 @@ urlpatterns = [
     # User Profile
     path('user/profile/', get_user_profile, name='get-user-profile'),
     path('user/profile-picture/', upload_profile_picture, name='upload-profile-picture'),
+    path('reminder/upload-attachment/', upload_attachment, name='upload-attachment'),
     # Password Reset
     path('auth/forgot-password/', forgot_password, name='forgot-password'),
     path('auth/reset-password/', reset_password, name='reset-password'),

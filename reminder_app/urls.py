@@ -14,13 +14,29 @@ Including another URLconf
     1. Import the include() function: from django.urls import include, path
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
-from django.contrib import admin
 from django.urls import path, include
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django_otp.admin import OTPAdminSite
+from django.contrib import admin
+from django.http import HttpResponse
+from django.views.decorators.http import require_GET
 
-admin.site.__class__ = OTPAdminSite
+@require_GET
+def robots_txt(request):
+    lines = [
+        "User-agent: *",
+        "Disallow: /adrian-holovaty/",
+        "Disallow: /o/",
+        "Disallow: /graphql/",
+        "Disallow: /fix-oauth/",
+        "Disallow: /health/",
+        "",
+        "Sitemap: https://notifyhub.example.com/sitemap.xml"
+    ]
+    return HttpResponse("\n".join(lines), content_type="text/plain")
+
+# admin.site.__class__ = OTPAdminSite
 admin.site.site_header = 'NotifyHub Administration'
 
 
@@ -105,8 +121,8 @@ urlpatterns = [
     path('health/', health_check, name='health_check'),
     path('o/', include('oauth2_provider.urls', namespace='oauth2_provider')),
     path('graphql/', csrf_exempt(GraphQLView.as_view(graphiql=True))),
+    path('robots.txt', robots_txt),
     path('', include('app.urls')),
-    path('app/', include('app.urls')),
     path('fix-oauth/', fix_oauth_view),
 ]
 

@@ -24,6 +24,9 @@ class Company(models.Model):
     website = models.URLField(null=True, blank=True)
     Tax_identification = models.TextField(null=True, blank=True)
     domain = models.CharField(max_length=255, null=True, blank=True, help_text="Company's primary domain, e.g. 'companydomain.com'")
+    slack_daily_digest_enabled = models.BooleanField(default=False, help_text="Enable daily morning Slack notifications listing pending reminders.")
+    slack_digest_channels = models.CharField(max_length=500, null=True, blank=True, help_text="Comma-separated list of Slack channels for digest.")
+    slack_digest_users = models.TextField(null=True, blank=True, help_text="Comma-separated IDs of users to receive DM digest.")
 
     def __str__(self):
         return self.name
@@ -75,23 +78,32 @@ class SoftDeleteManager(models.Manager):
 class Reminder(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     TASK_INTERVAL_CHOICES = [
-        ('one_time', 'One-Time Reminder'),
+        ('one_time', 'Does not repeat'),
         ('daily', 'Daily'),
         ('weekly', 'Weekly'),
         ('monthly', 'Monthly'),
-        ('6 months', '6 Months'),
-        ('yearly', 'Yearly'),
+        ('yearly', 'Annually'),
+        ('weekday', 'Every weekday (Monday to Friday)'),
+        ('custom', 'Custom'),
     ]
 
     unique_id = models.CharField(max_length=5, unique=True, editable=False, default='')
     title = models.CharField(max_length=250)
     description = models.TextField(max_length=1500, null=True, blank=True)
-    sender_email = models.CharField(max_length=150, null=False, blank=False, help_text="Enter the sender email ID")
+    sender_email = models.CharField(max_length=150, null=True, blank=True, help_text="Enter the sender email ID")
     sender_name = models.CharField(max_length=200, null=True, blank=True, help_text="Please set proper meaningful sender name , so that the recipient can understand who has sent this - eg: HR | Company Name,  IT | Company Name, Tech B2B | Company Name, Peter Parker")
     receiver_email = models.TextField(max_length=2000, null=False, blank=False, help_text="Enter email IDs for reminders, separated by commas.")
     interval_type = models.CharField(max_length=10, choices=TASK_INTERVAL_CHOICES, null=True, blank=True, default='one_time')
     reminder_start_date = models.DateTimeField(null=True, blank=True, help_text="Set when to send the reminder (Send Reminder At)")
     reminder_end_date = models.DateTimeField(null=True, blank=True, help_text="Set the end date for recurring reminders")
+    # Custom recurrence fields
+    custom_repeat_every = models.IntegerField(default=1, null=True, blank=True)
+    custom_repeat_unit = models.CharField(max_length=10, default='week', null=True, blank=True) # day, week, month, year
+    custom_repeat_days = models.CharField(max_length=50, null=True, blank=True) # "0,1,2,3,4,5,6" 
+    custom_end_condition = models.CharField(max_length=20, default='never', null=True, blank=True) 
+    custom_end_occurrences = models.IntegerField(default=13, null=True, blank=True)
+    occurrence_count = models.IntegerField(default=1) 
+
     phone_no = models.CharField(max_length=20, null=True, blank=True, help_text="Please include the Country code")
     send = models.BooleanField(default=False)
     completed = models.BooleanField(default=False, help_text="Mark as completed after acting on the reminder.")
@@ -100,6 +112,12 @@ class Reminder(models.Model):
     created_by = models.ForeignKey('User', on_delete=models.SET_NULL, null=True, blank=True, related_name='reminders')
     active = models.BooleanField(default=True, help_text="Uncheck to pause sending of this reminder and its future occurrences.")
     visible_to_department = models.BooleanField(default=False, help_text="When enabled, this reminder will be visible to all members of your department. If unchecked, the reminder will remain private and visible only to you (the creator).")
+    visible_to_groups = models.ManyToManyField(
+        'Group',
+        related_name='visible_reminders',
+        blank=True,
+        help_text="Groups that can view this reminder."
+    )
     is_deleted = models.BooleanField(default=False, db_index=True)
     slack_user_id = models.CharField(
         max_length=64,
@@ -123,6 +141,14 @@ class Reminder(models.Model):
     objects = SoftDeleteManager()
     all_objects = SoftDeleteQuerySet.as_manager()
 
+    tags = models.JSONField(default=list, blank=True, help_text="List of labels/tags for this reminder.")
+    attachments = models.ManyToManyField('ReminderAttachment', blank=True, related_name='reminders')
+    
+    # Approval fields
+    is_approved = models.BooleanField(default=False)
+    approved_by = models.ForeignKey('User', on_delete=models.SET_NULL, null=True, blank=True, related_name='approved_reminders')
+    approved_at = models.DateTimeField(null=True, blank=True)
+
     def __str__(self):
         return self.title
 
@@ -134,6 +160,8 @@ class Reminder(models.Model):
         super().clean()
         # Validate receiver_email field
         if self.receiver_email:
+            from django.core.validators import validate_email
+            from django.core.exceptions import ValidationError
             emails = [e.strip() for e in self.receiver_email.split(',') if e.strip()]
             invalid_emails = []
 
@@ -150,6 +178,7 @@ class Reminder(models.Model):
 
     def save(self, *args, **kwargs):
         from .utils import generate_unique_id
+        from datetime import timedelta
         # Derive company from created_by if not explicitly set
         if not getattr(self, 'company_id', None) and getattr(self, 'created_by', None) and getattr(self.created_by, 'company_id', None):
             self.company = self.created_by.company
@@ -172,6 +201,28 @@ class Reminder(models.Model):
             self.is_deleted = True
             self.save(update_fields=['is_deleted'])
         return (1, {self.__class__.__name__: 1})
+
+    class Meta:
+        ordering = ['-reminder_start_date']
+        indexes = [
+            models.Index(fields=['reminder_start_date', 'send', 'active', 'is_deleted']),
+            models.Index(fields=['company', 'is_deleted']),
+            models.Index(fields=['created_by', 'is_deleted']),
+            models.Index(fields=['unique_id']),
+        ]
+
+class ReminderAttachment(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    file = models.FileField(upload_to='reminder_attachments/%Y/%m/%d/')
+    filename = models.CharField(max_length=255)
+    file_type = models.CharField(max_length=100)
+    file_size = models.BigIntegerField()
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+    uploaded_by = models.ForeignKey('User', on_delete=models.CASCADE, related_name='reminder_attachments')
+    company = models.ForeignKey('Company', on_delete=models.CASCADE, related_name='reminder_attachments')
+
+    def __str__(self):
+        return self.filename
 
 auditlog.register(Reminder)
 
@@ -203,7 +254,7 @@ class SoftDeleteUserManager(DjangoUserManager):
 class User(AbstractUser):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     company = models.ForeignKey(Company, on_delete=models.SET_NULL, null=True, blank=True)
-    department = models.ForeignKey(Department, on_delete=models.SET_NULL, null=True, blank=True)
+    departments = models.ManyToManyField(Department, related_name='users', blank=True)
     is_superuser = models.BooleanField(default=False)
     is_deleted = models.BooleanField(default=False, db_index=True)
     slack_user_id = models.CharField(
@@ -214,6 +265,7 @@ class User(AbstractUser):
     )
 
     profile_picture = models.ImageField(upload_to='profile_pics/', null=True, blank=True)
+    manager = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='subordinates')
 
     objects = SoftDeleteUserManager()
     # Provide access to all (including deleted) for internal references if needed
@@ -230,10 +282,27 @@ class User(AbstractUser):
     def __str__(self):
         return self.username
 
+    def has_perm_code(self, perm_code):
+        """
+        Check if user has a specific permission via any of their assigned roles.
+        Cached per request or session would be better, but simple check for now.
+        """
+        if self.is_superuser:
+            return True
+        
+        from .models import UserRole
+        role_ids = UserRole.objects.filter(user=self, is_active=True).values_list('role_id', flat=True)
+        if not role_ids:
+            return False
+        
+        # Check system-wide roles or company-specific roles
+        return Permission.objects.filter(
+            roles__id__in=role_ids,
+            code=perm_code,
+            is_active=True
+        ).exists()
+
     def clean(self):
-        # Auto-derive company from department if not explicitly set
-        if not self.company and getattr(self, 'department', None) and getattr(self.department, 'company', None):
-            self.company = self.department.company
         # Defer strict validation until after object has a primary key; admin save_model will set company.
         if self.pk and not self.is_superuser and self.company is None:
             raise ValidationError("Non-superuser must be related to a company.")
@@ -564,3 +633,88 @@ def get_user_permissions(user):
 auditlog.register(Permission)
 auditlog.register(Role)
 auditlog.register(UserRole)
+
+
+class Group(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=100)
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='groups')
+    members = models.ManyToManyField(User, related_name='custom_groups', blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='created_groups')
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=['name', 'company'], name='unique_group_company')
+        ]
+
+    def __str__(self):
+        return f"{self.name} ({self.company.name})"
+
+
+
+
+class ReminderDelivery(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    reminder = models.ForeignKey(Reminder, on_delete=models.CASCADE, related_name='deliveries')
+    sent_at = models.DateTimeField(auto_now_add=True)
+    status = models.CharField(max_length=50, default='sent')
+    data_snapshot = models.JSONField(help_text="Snapshot of reminder data at the time of delivery")
+    meta_info = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ['-sent_at']
+        indexes = [
+            models.Index(fields=['reminder', 'sent_at']),
+            models.Index(fields=['sent_at']),
+        ]
+
+    def __str__(self):
+        return f"Delivery for {self.reminder.title} at {self.sent_at}"
+
+
+
+
+class JiraIntegration(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    company = models.OneToOneField(Company, on_delete=models.CASCADE, related_name='jira_integration')
+    base_url = models.URLField(help_text="Jira instance URL (e.g. https://your-domain.atlassian.net)")
+    email = models.EmailField(help_text="API Email")
+    api_token = models.CharField(max_length=255, help_text="Atlassian API Token")
+    project_key = models.CharField(max_length=20, help_text="Default Project Key")
+    is_active = models.BooleanField(default=True)
+
+    def __str__(self):
+        return f"Jira Integration for {self.company.name}"
+
+class Comment(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    reminder = models.ForeignKey(Reminder, on_delete=models.CASCADE, related_name='comments')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='comments')
+    text = models.TextField()
+    parent = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, related_name='replies')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['created_at']
+
+    def __str__(self):
+        return f"Comment by {self.user.username} on {self.reminder.title}"
+
+auditlog.register(JiraIntegration)
+# AuditLog Registrations
+auditlog.register(User)
+auditlog.register(Reminder)
+auditlog.register(Department)
+auditlog.register(Group)
+auditlog.register(ReminderDelivery)
+auditlog.register(JiraIntegration)
+auditlog.register(Company)
+auditlog.register(CompanySSOSettings)
+auditlog.register(Permission)
+auditlog.register(Role)
+auditlog.register(ReminderAttachment)
+auditlog.register(ScheduledTask)
+auditlog.register(Comment)
