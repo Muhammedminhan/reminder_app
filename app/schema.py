@@ -96,6 +96,7 @@ class ReminderType(DjangoObjectType):
             'phone_no', 'send', 'completed', 'company', 'created_by', 'active',
             'visible_to_department', 'visible_to_groups', 'slack_channels', 'slack_user_id',
             'tags', 'attachments', 'is_approved', 'approved_by', 'approved_at', 'comments',
+            'is_formal',
         )
     
     def resolve_visible_to_groups(self, info):
@@ -728,6 +729,7 @@ class CreateReminder(graphene.Mutation):
         custom_repeat_days = graphene.String(required=False)
         custom_end_condition = graphene.String(required=False)
         custom_end_occurrences = graphene.Int(required=False)
+        is_formal = graphene.Boolean(required=False)
 
     ok = graphene.Boolean()
     reminder = graphene.Field(ReminderType)
@@ -807,6 +809,20 @@ class CreateReminder(graphene.Mutation):
             
             if 'tags' in kwargs:
                 reminder.tags = kwargs.get('tags')
+            
+            # Ensure recurrence drift protection
+            if reminder.interval_type != 'one_time' and reminder.reminder_start_date:
+                start_iso = reminder.reminder_start_date.isoformat()
+                anchor_tag = f"recurrence_start:{start_iso}"
+                if reminder.tags is None:
+                    reminder.tags = [anchor_tag]
+                elif anchor_tag not in reminder.tags:
+                    # Remove any existing anchor tag if updating
+                    reminder.tags = [t for t in reminder.tags if not t.startswith('recurrence_start:')]
+                    reminder.tags.append(anchor_tag)
+            
+            if 'is_formal' in kwargs:
+                reminder.is_formal = kwargs.get('is_formal')
             
             reminder.created_by = user
             if getattr(user, 'company', None):

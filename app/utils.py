@@ -1021,7 +1021,19 @@ def _schedule_next_reminder(reminder):
     try:
         if reminder.interval_type in (None, '', 'one_time'):
             return None
+        
         base_start = reminder.reminder_start_date or timezone.now()
+        anchor_start = None
+        if reminder.tags:
+            for tag in reminder.tags:
+                if tag.startswith('recurrence_start:'):
+                    try:
+                        iso_str = tag.split(':', 1)[1]
+                        anchor_start = timezone.datetime.fromisoformat(iso_str)
+                    except:
+                        pass
+        
+        next_count = (reminder.occurrence_count or 1) + 1
         
         # Compute next_start based on interval type
         if reminder.interval_type == 'daily':
@@ -1029,9 +1041,15 @@ def _schedule_next_reminder(reminder):
         elif reminder.interval_type == 'weekly':
             next_start = base_start + timedelta(weeks=1)
         elif reminder.interval_type == 'monthly':
-            next_start = base_start + relativedelta(months=+1)
+            if anchor_start:
+                next_start = anchor_start + relativedelta(months=next_count - 1)
+            else:
+                next_start = base_start + relativedelta(months=+1)
         elif reminder.interval_type == 'yearly':
-            next_start = base_start + relativedelta(years=+1)
+            if anchor_start:
+                next_start = anchor_start + relativedelta(years=next_count - 1)
+            else:
+                next_start = base_start + relativedelta(years=+1)
         elif reminder.interval_type == 'weekday':
             # Next weekday (Mon-Fri)
             next_start = base_start + timedelta(days=1)
@@ -1058,9 +1076,15 @@ def _schedule_next_reminder(reminder):
                     if not found:
                         next_start = base_start + timedelta(days=(7 - current_google_wd) + ((every - 1) * 7) + enabled_days[0])
             elif unit == 'month':
-                next_start = base_start + relativedelta(months=+every)
+                if anchor_start:
+                    next_start = anchor_start + relativedelta(months=(next_count - 1) * every)
+                else:
+                    next_start = base_start + relativedelta(months=+every)
             elif unit == 'year':
-                next_start = base_start + relativedelta(years=+every)
+                if anchor_start:
+                    next_start = anchor_start + relativedelta(years=(next_count - 1) * every)
+                else:
+                    next_start = base_start + relativedelta(years=+every)
             else:
                 next_start = base_start + timedelta(weeks=every)
         else:
@@ -1068,7 +1092,7 @@ def _schedule_next_reminder(reminder):
             return None
 
         # Occurrence count and End conditions
-        next_count = (reminder.occurrence_count or 1) + 1
+        # next_count was pre-calculated at the top
         if reminder.interval_type == 'custom':
             if reminder.custom_end_condition == 'on_date' and reminder.reminder_end_date:
                 if next_start > reminder.reminder_end_date:
@@ -1108,7 +1132,30 @@ def _schedule_next_reminder(reminder):
             active=reminder.active,
             send=False,
             completed=False,
+            is_formal=reminder.is_formal,
+            # Copy all custom recurrence fields
+            custom_repeat_every=reminder.custom_repeat_every,
+            custom_repeat_unit=reminder.custom_repeat_unit,
+            custom_repeat_days=reminder.custom_repeat_days,
+            custom_end_condition=reminder.custom_end_condition,
+            custom_end_occurrences=reminder.custom_end_occurrences,
+            occurrence_count=next_count,
+            # Copy notification settings
+            slack_user_id=reminder.slack_user_id,
+            slack_channels=reminder.slack_channels,
+            # Copy visibility
+            visible_to_department=reminder.visible_to_department,
+            tags=reminder.tags,
         )
+        # Handle Many-to-Many fields
+        if reminder.visible_to_groups.exists():
+            clone.visible_to_groups.set(reminder.visible_to_groups.all())
+        if reminder.attachments.exists():
+            clone.attachments.set(reminder.attachments.all())
+        if reminder.slack_users.exists():
+            clone.slack_users.set(reminder.slack_users.all())
+        
+        clone.save()
         logger.info(f"Scheduled next reminder clone {clone.id} for original {reminder.id} at {next_start}.")
         return clone
     except Exception as e:

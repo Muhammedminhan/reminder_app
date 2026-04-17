@@ -148,6 +148,7 @@ class Reminder(models.Model):
     is_approved = models.BooleanField(default=False)
     approved_by = models.ForeignKey('User', on_delete=models.SET_NULL, null=True, blank=True, related_name='approved_reminders')
     approved_at = models.DateTimeField(null=True, blank=True)
+    is_formal = models.BooleanField(default=False, help_text="Formal reminders are treated as tasks that need to be marked as done.")
 
     def __str__(self):
         return self.title

@@ -55,10 +55,12 @@ const INITIAL_QUERY = gql`
       receiverEmail
       intervalType
       reminderStartDate
+      reminderEndDate
       active
       completed
       slackChannels
       slackUserId
+      isFormal
       visibleToDepartment
       visibleToGroups {
         id
@@ -514,6 +516,12 @@ export default function Dashboard() {
     };
 
     const filteredReminders = reminders.filter(r => {
+        // Exclude expired reminders
+        const now = new Date();
+        if (r.reminderEndDate && new Date(r.reminderEndDate) < now) {
+            return false;
+        }
+
         const matchesSearch = r.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
             r.senderEmail.toLowerCase().includes(searchTerm.toLowerCase()) ||
             r.receiverEmail.toLowerCase().includes(searchTerm.toLowerCase());
@@ -853,9 +861,16 @@ export default function Dashboard() {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {(activeView === 'pending' ? filteredReminders.filter(r => !r.completed) : filteredReminders).map(reminder => (
+                                        {(activeView === 'pending' ? filteredReminders.filter(r => r.isFormal && !r.completed) : filteredReminders).map(reminder => (
                                             <tr key={reminder.id}>
-                                                <td className="bold">{reminder.title}</td>
+                                                <td className="bold">
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        {reminder.title}
+                                                        {reminder.isFormal && (
+                                                            <span className="mini-tag" style={{ background: 'var(--primary-glow)', fontSize: '10px' }}>Formal</span>
+                                                        )}
+                                                    </div>
+                                                </td>
                                                 <td>{reminder.receiverEmail}</td>
                                                 <td>
                                                     {(reminder.slackChannels || reminder.slackUserId) ? (
@@ -877,6 +892,15 @@ export default function Dashboard() {
                                                 </td>
                                                 <td style={{ textAlign: 'right' }}>
                                                     <div className="action-btns">
+                                                        {reminder.isFormal && !reminder.completed && (
+                                                            <button 
+                                                                className="btn-primary small" 
+                                                                style={{ padding: '4px 8px', fontSize: '11px' }}
+                                                                onClick={() => toggleComplete(reminder.id, reminder.completed)}
+                                                            >
+                                                                Done
+                                                            </button>
+                                                        )}
                                                         <button 
                                                             className="btn-icon" 
                                                             title="View Details"
@@ -895,12 +919,14 @@ export default function Dashboard() {
                                                             </button>
                                                         )}
                                                         
-                                                        <button 
-                                                            title={reminder.completed ? "Mark Incomplete" : "Finalize"}
-                                                            onClick={() => toggleComplete(reminder.id, reminder.completed)}
-                                                        >
-                                                            <CheckCircle size={18} color={reminder.completed ? "var(--success)" : "currentColor"} />
-                                                        </button>
+                                                        {!reminder.isFormal && (
+                                                            <button 
+                                                                title={reminder.completed ? "Mark Incomplete" : "Finalize"}
+                                                                onClick={() => toggleComplete(reminder.id, reminder.completed)}
+                                                            >
+                                                                <CheckCircle size={18} color={reminder.completed ? "var(--success)" : "currentColor"} />
+                                                            </button>
+                                                        )}
                                                         <button onClick={() => handleDelete(reminder.id)}><Trash2 size={18} /></button>
                                                     </div>
                                                 </td>

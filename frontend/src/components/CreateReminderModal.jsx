@@ -138,6 +138,7 @@ const CREATE_REMINDER = gql`
     $customEndCondition: String
     $customEndOccurrences: Int
     $reminderEndDate: DateTime
+    $isFormal: Boolean
   ) {
     createReminder(
       title: $title
@@ -158,6 +159,7 @@ const CREATE_REMINDER = gql`
       customEndCondition: $customEndCondition
       customEndOccurrences: $customEndOccurrences
       reminderEndDate: $reminderEndDate
+      isFormal: $isFormal
     ) {
       ok
       reminder {
@@ -191,7 +193,8 @@ export default function CreateReminderModal({ isOpen, onClose, onSuccess }) {
             endCondition: 'never',
             endDate: new Date().toISOString().split('T')[0],
             endOccurrences: 13
-        }
+        },
+        isFormal: false
     });
     const [isUploading, setIsUploading] = useState(false);
     const [showCustomModal, setShowCustomModal] = useState(false);
@@ -323,14 +326,17 @@ export default function CreateReminderModal({ isOpen, onClose, onSuccess }) {
                     </div>
 
                     <div className="form-group">
-                        <label>Recipient Email</label>
+                        <label>Recipient Emails</label>
                         <input
-                            type="email"
-                            placeholder="client@company.com"
+                            type="text"
+                            placeholder="user1@company.com, user2@company.com"
                             required
                             value={formData.receiverEmail}
                             onChange={e => setFormData({ ...formData, receiverEmail: e.target.value })}
                         />
+                        <small className="help-text">
+                            Separate multiple emails with commas. Example: <b>john@example.com, sarah@example.com</b>
+                        </small>
                     </div>
 
                     <div className="form-row">
@@ -444,6 +450,29 @@ export default function CreateReminderModal({ isOpen, onClose, onSuccess }) {
                             </label>
                             <small className="help-text">Visible to all department members.</small>
                         </div>
+                        <div className="form-group">
+                            <label style={{ marginBottom: '12px' }}>Formal Task</label>
+                            <label className="toggle-label" style={{ 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                gap: '12px', 
+                                cursor: 'pointer', 
+                                padding: '10px 14px',
+                                background: 'var(--bg-card)',
+                                borderRadius: 'var(--radius-md)',
+                                border: '1px solid var(--border)',
+                                margin: 0
+                            }}>
+                                <input 
+                                    type="checkbox" 
+                                    checked={formData.isFormal}
+                                    onChange={e => setFormData({ ...formData, isFormal: e.target.checked })}
+                                    style={{ width: 'auto', margin: 0 }}
+                                />
+                                <span style={{ fontSize: '13px', fontWeight: 'bold', color: 'var(--text-main)', textTransform: 'none', letterSpacing: 'normal' }}>Mark as Formal (Task)</span>
+                            </label>
+                            <small className="help-text">Formal reminders appear in Pending Tasks and require completion.</small>
+                        </div>
                     </div>
 
                     <div className="form-section-title">
@@ -551,6 +580,7 @@ export default function CreateReminderModal({ isOpen, onClose, onSuccess }) {
                 onClose={() => setShowCustomModal(false)}
                 initialData={formData.customRecurrence}
                 onSave={(data) => setFormData({ ...formData, customRecurrence: data })}
+                startingDate={formData.reminderStartDate}
             />
         </div>
     );
