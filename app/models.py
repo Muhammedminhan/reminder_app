@@ -286,22 +286,26 @@ class User(AbstractUser):
     def has_perm_code(self, perm_code):
         """
         Check if user has a specific permission via any of their assigned roles.
-        Cached per request or session would be better, but simple check for now.
         """
         if self.is_superuser:
             return True
         
+        # Check through UserRole assignments
         from .models import UserRole
         role_ids = UserRole.objects.filter(user=self, is_active=True).values_list('role_id', flat=True)
-        if not role_ids:
-            return False
+        if role_ids:
+            if Permission.objects.filter(
+                roles__id__in=role_ids,
+                code=perm_code,
+                is_active=True
+            ).exists():
+                return True
         
-        # Check system-wide roles or company-specific roles
-        return Permission.objects.filter(
-            roles__id__in=role_ids,
-            code=perm_code,
-            is_active=True
-        ).exists()
+        # Backward compatibility: Company Admins have all permissions
+        if self.groups.filter(name__iexact='Company Admin').exists():
+            return True
+
+        return False
 
     def clean(self):
         # Defer strict validation until after object has a primary key; admin save_model will set company.

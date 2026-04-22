@@ -338,22 +338,12 @@ def _get_oauth_user(request):
         else:
             token = request.GET.get('token')
 
-        with open('/tmp/auth_debug.log', 'a') as f:
-            import datetime
-            f.write(f"{datetime.datetime.now()} - Auth Check. Header: {auth_header[:20]}..., Token extracted: {token[:10] if token else 'None'}...\n")
-
         if token:
             at = AccessToken.objects.filter(token=token).first()
             if at:
-                with open('/tmp/auth_debug.log', 'a') as f:
-                    f.write(f"Match found! User: {at.user.username}\n")
                 return at.user
-            else:
-                with open('/tmp/auth_debug.log', 'a') as f:
-                    f.write(f"Token NOT found in DB: {token[:10]}...\n")
-    except Exception as e:
-        with open('/tmp/auth_debug.log', 'a') as f:
-            f.write(f"Auth Error: {str(e)}\n")
+    except Exception:
+        pass
     return None
 
 def _build_otpauth_uri(username, issuer, secret_base32):

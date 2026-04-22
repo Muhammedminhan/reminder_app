@@ -360,14 +360,6 @@ class Query(graphene.ObjectType):
             try:
                 # Return a fresh instance from the DB
                 u = get_user_model().objects.get(pk=user.pk)
-                with open('/tmp/auth_debug.log', 'a') as f:
-                    import datetime
-                    f.write(f"{datetime.datetime.now()} - Resolving ME: {u.username}, Email: {u.email}, PK: {u.pk}\n")
-                return u
-            except Exception as e:
-                with open('/tmp/auth_debug.log', 'a') as f:
-                    f.write(f"ME Error: {str(e)}\n")
-                return user
         return None
  
     def resolve_users(self, info):
@@ -1691,9 +1683,7 @@ class CreateGroup(graphene.Mutation):
             # Handle both camelCase and snake_case for member_ids
             member_ids = kwargs.get('memberIds') or kwargs.get('member_ids')
 
-            with open('/tmp/mutation_log.txt', 'a') as f:
-                import datetime
-                f.write(f"{datetime.datetime.now()} - Creating group: {name} for user: {user.username}, company: {user.company}, members: {member_ids}\n")
+            member_ids = kwargs.get('memberIds') or kwargs.get('member_ids')
 
             if not user.company:
                 # Assign default company if missing for the user
@@ -1714,8 +1704,7 @@ class CreateGroup(graphene.Mutation):
                 members = get_user_model().objects.filter(id__in=member_ids)
                 group.members.set(members)
             
-            with open('/tmp/mutation_log.txt', 'a') as f:
-                f.write(f"Successfully created group {group.id}\n")
+                group.members.set(members)
                 
             return CreateGroup(ok=True, group=group)
         except Exception as e:
@@ -1724,10 +1713,6 @@ class CreateGroup(graphene.Mutation):
             from django.db import IntegrityError
             if isinstance(e, IntegrityError) or "UNIQUE constraint failed" in error_msg:
                 error_msg = f"A group named '{name}' already exists in your company."
-            
-            with open('/tmp/mutation_log.txt', 'a') as f:
-                import traceback
-                f.write(f"ERROR: {error_msg}\n{traceback.format_exc()}\n")
             raise Exception(error_msg)
 
 
