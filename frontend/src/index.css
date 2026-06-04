@@ -306,6 +306,112 @@
 
 /* badge/chip percentage labels stay as-is (they have their own colours) */
 
+/* ── Welcome banner: username highlight ── */
+.dashboard-container .text-gradient,
+.dashboard-container .welcome-text .text-gradient {
+  background: linear-gradient(90deg, #00ABE4, #0090c4) !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+}
+
+/* ── User avatar (sidebar bottom card) ── */
+.dashboard-container .user-avatar {
+  background: linear-gradient(135deg, #00ABE4, #0090c4) !important;
+}
+
+/* ── Modal ── */
+.modal-overlay {
+  background: rgba(13, 31, 45, 0.55) !important;
+  backdrop-filter: blur(10px) !important;
+}
+
+.modal-container {
+  background: #FFFFFF !important;
+  border: 1px solid rgba(0, 171, 228, 0.2) !important;
+  box-shadow: 0 8px 40px rgba(0, 171, 228, 0.15), 0 2px 8px rgba(0,0,0,0.08) !important;
+}
+
+.modal-header h2 {
+  color: #0d1f2d !important;
+}
+
+.modal-header p {
+  color: #4d7a96 !important;
+}
+
+.modal-close {
+  color: #6b8099 !important;
+}
+
+.modal-close:hover {
+  background: #E9F1FA !important;
+  color: #00ABE4 !important;
+}
+
+/* Modal form inputs & selects */
+.modal-container input,
+.modal-container select,
+.modal-container textarea {
+  background: #F4F8FC !important;
+  border: 1.5px solid rgba(0,171,228,0.2) !important;
+  color: #0d1f2d !important;
+}
+
+.modal-container input:focus,
+.modal-container select:focus,
+.modal-container textarea:focus {
+  border-color: #00ABE4 !important;
+  box-shadow: 0 0 0 3px rgba(0,171,228,0.15) !important;
+  background: #FFFFFF !important;
+}
+
+.modal-container input::placeholder,
+.modal-container textarea::placeholder {
+  color: #94afc5 !important;
+}
+
+/* Modal labels */
+.modal-container label {
+  color: #3d5a73 !important;
+}
+
+/* Modal section titles (IDENTIFICATION, SCHEDULE, etc.) */
+.modal-container .form-section-title {
+  color: #00ABE4 !important;
+}
+
+.modal-container .form-section-title::after {
+  background: linear-gradient(90deg, rgba(0,171,228,0.25), transparent) !important;
+}
+
+/* Modal help text */
+.modal-container .help-text {
+  color: #6b8099 !important;
+}
+
+/* Modal footer buttons */
+.modal-container .btn-primary,
+.modal-footer .btn-primary {
+  background: linear-gradient(135deg, #00ABE4, #0090c4) !important;
+  color: #FFFFFF !important;
+  border: none !important;
+  box-shadow: 0 4px 14px rgba(0,171,228,0.35) !important;
+}
+
+.modal-container .btn-secondary,
+.modal-footer .btn-secondary {
+  background: #FFFFFF !important;
+  color: #0d1f2d !important;
+  border: 1.5px solid rgba(0,171,228,0.25) !important;
+}
+
+.modal-container .btn-secondary:hover {
+  background: #E9F1FA !important;
+  border-color: #00ABE4 !important;
+  color: #00ABE4 !important;
+}
+
 * {
   margin: 0;
   padding: 0;
