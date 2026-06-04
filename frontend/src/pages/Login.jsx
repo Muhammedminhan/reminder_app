@@ -50,35 +50,38 @@ export default function LoginPage() {
                     </div>
                 )}
 
-                <div style={{ marginBottom: '20px', marginTop: '20px' }}>
+                <div style={{ marginBottom: '12px', marginTop: '12px' }}>
                     <button
                         type="button"
                         onClick={handleGoogleLogin}
                         className="google-signin-btn"
-                        style={{ 
-                            width: '100%', 
+                        style={{
+                            width: '100%',
                             display: 'flex',
                             alignItems: 'center',
-                            justifyContent: 'center', 
+                            justifyContent: 'center',
                             gap: '12px',
-                            padding: '12px 24px',
-                            backgroundColor: 'white',
-                            color: '#374151',
-                            border: '1px solid #d1d5db',
+                            padding: '13px 24px',
+                            backgroundColor: 'rgba(255,255,255,0.07)',
+                            color: '#f1f5f9',
+                            border: '1px solid rgba(129, 140, 248, 0.3)',
                             borderRadius: 'var(--radius-md)',
                             fontSize: '14px',
-                            fontWeight: '700',
+                            fontWeight: '600',
                             cursor: 'pointer',
-                            transition: 'var(--transition)',
-                            boxShadow: 'var(--shadow-sm)'
+                            transition: 'all 0.25s ease',
+                            boxShadow: '0 0 0 0 rgba(99,102,241,0)',
+                            letterSpacing: '0.01em'
                         }}
                         onMouseOver={(e) => {
-                            e.currentTarget.style.backgroundColor = '#f9fafb';
-                            e.currentTarget.style.borderColor = '#9ca3af';
+                            e.currentTarget.style.backgroundColor = 'rgba(129, 140, 248, 0.12)';
+                            e.currentTarget.style.borderColor = 'rgba(129, 140, 248, 0.6)';
+                            e.currentTarget.style.boxShadow = '0 0 20px rgba(99,102,241,0.2)';
                         }}
                         onMouseOut={(e) => {
-                            e.currentTarget.style.backgroundColor = 'white';
-                            e.currentTarget.style.borderColor = '#d1d5db';
+                            e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.07)';
+                            e.currentTarget.style.borderColor = 'rgba(129, 140, 248, 0.3)';
+                            e.currentTarget.style.boxShadow = '0 0 0 0 rgba(99,102,241,0)';
                         }}
                     >
                         <svg width="20" height="20" viewBox="0 0 24 24">
