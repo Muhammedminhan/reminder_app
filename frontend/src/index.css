@@ -249,6 +249,131 @@
 }
 
 /* ────────────────────────────────────────────────────
+   SETTINGS PAGE — light mode (scoped)
+──────────────────────────────────────────────────── */
+
+/* Tab nav */
+.dashboard-container .settings-nav {
+  border-bottom: 2px solid rgba(0,171,228,0.15) !important;
+}
+.dashboard-container .settings-nav button { color: #6b8099 !important; }
+.dashboard-container .settings-nav button:hover { color: #00ABE4 !important; }
+.dashboard-container .settings-nav button.active { color: #00ABE4 !important; }
+.dashboard-container .settings-nav button.active::after {
+  background: #00ABE4 !important;
+  box-shadow: none !important;
+}
+
+/* Settings header */
+.dashboard-container .settings-header h1,
+.dashboard-container .settings-header h2 { color: #0d1f2d !important; }
+
+/* Detail rows (USERNAME / EMAIL / COMPANY etc.) */
+.dashboard-container .control-row {
+  background: #f4f8fc !important;
+  border: 1px solid rgba(0,171,228,0.15) !important;
+  border-radius: 12px !important;
+}
+.dashboard-container .control-row:hover {
+  border-color: rgba(0,171,228,0.35) !important;
+  background: #edf5fb !important;
+}
+.dashboard-container .detail-item span   { color: #6b8099 !important; }
+.dashboard-container .detail-item strong { color: #0d1f2d !important; }
+.dashboard-container .control-info span,
+.dashboard-container .control-info strong { color: #0d1f2d !important; }
+
+/* Toggle switches — replace purple with #00ABE4 */
+.dashboard-container .toggle { background: #c8dce9 !important; }
+.dashboard-container .toggle.active {
+  background: #00ABE4 !important;
+  box-shadow: 0 0 10px rgba(0,171,228,0.35) !important;
+}
+
+/* Checkbox */
+.dashboard-container input[type="checkbox"] { accent-color: #00ABE4 !important; }
+
+/* Settings form inputs (Integration page) */
+.dashboard-container .content-body input,
+.dashboard-container .content-body select,
+.dashboard-container .content-body textarea {
+  background: #FFFFFF !important;
+  border: 1.5px solid rgba(0,171,228,0.25) !important;
+  color: #0d1f2d !important;
+}
+.dashboard-container .content-body input:focus,
+.dashboard-container .content-body select:focus,
+.dashboard-container .content-body textarea:focus {
+  border-color: #00ABE4 !important;
+  box-shadow: 0 0 0 3px rgba(0,171,228,0.15) !important;
+}
+.dashboard-container .content-body input::placeholder,
+.dashboard-container .content-body textarea::placeholder { color: #94afc5 !important; }
+
+/* Section headings inside settings */
+.dashboard-container .section-header-clean h3,
+.dashboard-container .section-header-clean p { color: #0d1f2d !important; }
+.dashboard-container .header-accent-icon {
+  color: #00ABE4 !important;
+  background: rgba(0,171,228,0.1) !important;
+}
+
+/* Team member cards */
+.dashboard-container .team-member-card {
+  background: #FFFFFF !important;
+  border: 1px solid rgba(0,171,228,0.15) !important;
+}
+.dashboard-container .team-member-card:hover {
+  border-color: #00ABE4 !important;
+  box-shadow: 0 4px 16px rgba(0,171,228,0.12) !important;
+  transform: translateY(-2px) !important;
+}
+.dashboard-container .member-avatar {
+  background: rgba(0,171,228,0.08) !important;
+  border: 2px solid rgba(0,171,228,0.2) !important;
+}
+.dashboard-container .avatar-placeholder { color: #00ABE4 !important; }
+.dashboard-container .member-name  { color: #0d1f2d !important; }
+.dashboard-container .member-email { color: #6b8099 !important; }
+
+/* Section glow */
+.dashboard-container .section-glow::after {
+  background: linear-gradient(90deg, transparent, rgba(0,171,228,0.25), transparent) !important;
+}
+
+/* Dark mode settings overrides */
+body:not(.light-mode) .dashboard-container .settings-nav button { color: #4a7a9b !important; }
+body:not(.light-mode) .dashboard-container .settings-nav button.active { color: #00ABE4 !important; }
+body:not(.light-mode) .dashboard-container .settings-nav button.active::after { background: #00ABE4 !important; box-shadow: none !important; }
+body:not(.light-mode) .dashboard-container .settings-header h1,
+body:not(.light-mode) .dashboard-container .settings-header h2 { color: #ffffff !important; }
+body:not(.light-mode) .dashboard-container .control-row {
+  background: #111111 !important;
+  border: 1px solid rgba(0,171,228,0.2) !important;
+}
+body:not(.light-mode) .dashboard-container .control-row:hover {
+  border-color: rgba(0,171,228,0.4) !important; background: #161616 !important;
+}
+body:not(.light-mode) .dashboard-container .detail-item strong,
+body:not(.light-mode) .dashboard-container .control-info span,
+body:not(.light-mode) .dashboard-container .control-info strong { color: #ffffff !important; }
+body:not(.light-mode) .dashboard-container .detail-item span   { color: #4a7a9b !important; }
+body:not(.light-mode) .dashboard-container .toggle             { background: #222222 !important; }
+body:not(.light-mode) .dashboard-container .toggle.active      { background: #00ABE4 !important; box-shadow: 0 0 10px rgba(0,171,228,0.4) !important; }
+body:not(.light-mode) .dashboard-container input[type="checkbox"] { accent-color: #00ABE4 !important; }
+body:not(.light-mode) .dashboard-container .content-body input,
+body:not(.light-mode) .dashboard-container .content-body select,
+body:not(.light-mode) .dashboard-container .content-body textarea {
+  background: #111111 !important; border: 1.5px solid rgba(0,171,228,0.25) !important; color: #ffffff !important;
+}
+body:not(.light-mode) .dashboard-container .content-body input::placeholder,
+body:not(.light-mode) .dashboard-container .content-body textarea::placeholder { color: #3d6a84 !important; }
+body:not(.light-mode) .dashboard-container .team-member-card { background: #0d0d0d !important; border: 1px solid rgba(0,171,228,0.2) !important; }
+body:not(.light-mode) .dashboard-container .member-name  { color: #ffffff !important; }
+body:not(.light-mode) .dashboard-container .member-email { color: #4a7a9b !important; }
+body:not(.light-mode) .dashboard-container .avatar-placeholder { color: #00ABE4 !important; }
+
+/* ────────────────────────────────────────────────────
    LIGHT MODE  (.light-mode .dashboard-container)
 ──────────────────────────────────────────────────── */
 
