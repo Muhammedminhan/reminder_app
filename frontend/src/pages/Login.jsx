@@ -70,8 +70,8 @@ export default function LoginPage() {
 
                 {/* Heading */}
                 <div className="lp-heading">
-                    <h1 className="lp-title">Welcome back</h1>
-                    <p className="lp-subtitle">Sign in to your workspace</p>
+                    <h1 className="lp-title">Welcome back 👋</h1>
+                    <p className="lp-subtitle">Sign in to your workspace to continue</p>
                 </div>
 
                 {/* Divider */}
