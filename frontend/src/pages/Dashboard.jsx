@@ -325,7 +325,7 @@ export default function Dashboard() {
     const [filterStatus, setFilterStatus] = useState('all');
     const [showFilterDropdown, setShowFilterDropdown] = useState(false);
     const [showNotifications, setShowNotifications] = useState(false);
-    const [isDarkMode, setIsDarkMode] = useState(true);
+    const [isDarkMode, setIsDarkMode] = useState(false);
     const [securitySettings, setSecuritySettings] = useState({
         twoFactor: true,
         encryption: true,
