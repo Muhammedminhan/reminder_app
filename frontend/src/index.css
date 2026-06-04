@@ -199,6 +199,113 @@
   background: rgba(0,171,228,0.25) !important;
 }
 
+/* ── Sidebar brand / logo ── */
+.dashboard-container .sidebar-logo-icon {
+  background: linear-gradient(135deg, #00ABE4, #0090c4) !important;
+  box-shadow: 0 4px 14px rgba(0,171,228,0.35) !important;
+}
+
+/* sidebar brand text — "Notify" white, "Hub" blue */
+.dashboard-container .sidebar-logo span,
+.dashboard-container .sidebar-logo h1,
+.dashboard-container .sidebar-logo p,
+.dashboard-container .sidebar-logo a,
+.dashboard-container .sidebar-logo div {
+  color: #0d1f2d !important;
+}
+
+.dashboard-container .sidebar-logo .text-gradient,
+.dashboard-container .sidebar-logo [class*="accent"],
+.dashboard-container .sidebar-logo [class*="gradient"] {
+  background: linear-gradient(90deg, #00ABE4, #0090c4) !important;
+  -webkit-background-clip: text !important;
+  background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+}
+
+/* ── All text inside dashboard ── */
+.dashboard-container,
+.dashboard-container .main-content {
+  color: #0d1f2d !important;
+}
+
+/* stat numbers */
+.dashboard-container .stat-value {
+  color: #0d1f2d !important;
+}
+
+.dashboard-container .stat-label,
+.dashboard-container .stat-header span,
+.dashboard-container [class*="stat-"] {
+  color: #3d5a73 !important;
+}
+
+/* section headings */
+.dashboard-container .section-header h2,
+.dashboard-container .section-header h3,
+.dashboard-container h2,
+.dashboard-container h3 {
+  color: #0d1f2d !important;
+}
+
+/* table headers */
+.dashboard-container .premium-table th,
+.dashboard-container [class*="table"] th {
+  color: #6b8099 !important;
+}
+
+.dashboard-container .premium-table td,
+.dashboard-container [class*="table"] td {
+  color: #0d1f2d !important;
+}
+
+/* "Detailed View" & all secondary buttons */
+.dashboard-container .btn-secondary {
+  background: #FFFFFF !important;
+  color: #0d1f2d !important;
+  border: 1.5px solid rgba(0,171,228,0.25) !important;
+  box-shadow: 0 1px 4px rgba(0,171,228,0.08) !important;
+}
+
+.dashboard-container .btn-secondary:hover {
+  background: #E9F1FA !important;
+  border-color: #00ABE4 !important;
+  color: #00ABE4 !important;
+}
+
+/* Primary button stays bright blue */
+.dashboard-container .btn-primary,
+.dashboard-container [class*="btn-primary"] {
+  background: linear-gradient(135deg, #00ABE4, #0090c4) !important;
+  color: #FFFFFF !important;
+  border: none !important;
+  box-shadow: 0 4px 14px rgba(0,171,228,0.35) !important;
+}
+
+.dashboard-container .btn-primary:hover {
+  box-shadow: 0 6px 20px rgba(0,171,228,0.45) !important;
+  transform: translateY(-1px) !important;
+}
+
+/* search icon */
+.dashboard-container .search-icon { color: #94afc5 !important; }
+
+/* logout btn */
+.dashboard-container .logout-btn { color: #6b8099 !important; }
+.dashboard-container .logout-btn:hover {
+  background: rgba(0,171,228,0.1) !important;
+  color: #00ABE4 !important;
+}
+
+/* submenu / chevron icons */
+.dashboard-container .submenu-icon { color: #94afc5 !important; }
+
+/* any card body text */
+.dashboard-container .card-body,
+.dashboard-container p { color: #4d7a96 !important; }
+
+/* badge/chip percentage labels stay as-is (they have their own colours) */
+
 * {
   margin: 0;
   padding: 0;
