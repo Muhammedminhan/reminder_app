@@ -32,7 +32,9 @@ from .views import (
 # here would be unreachable dead routes.
 
 urlpatterns = [
-    path('', index, name='index'),
+    # path('', index) intentionally removed — the catch-all TemplateView in
+    # reminder_app/urls.py serves React's index.html at /. Keeping this route
+    # caused an infinite redirect loop (index view → redirect('/') → index again).
     path('login-redirect/', login_redirect, name='login-redirect'),
     path('webhook/process-tasks/', process_tasks_webhook, name='process-tasks-webhook'),
     path('webhook/process-reminders/', process_reminders_webhook, name='process-reminders-webhook'),

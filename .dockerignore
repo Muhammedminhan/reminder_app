@@ -69,3 +69,10 @@ docs/
 tests/
 test_*
 *_test.py
+
+# Node — exclude local installs and build output from Docker build context.
+# The Dockerfile runs npm ci + npm run build inside the container so these
+# are not needed and would bloat the context (node_modules can be hundreds of MB).
+node_modules/
+frontend/node_modules/
+frontend/dist/

@@ -18,23 +18,23 @@ WORKDIR /reminder_app
 COPY requirements.txt /reminder_app/
 RUN pip install --upgrade pip && pip install -r requirements.txt
 
+# ── Copy full source FIRST ────────────────────────────────────────────────────
+# Must come before the frontend build so the build output lands inside the
+# already-copied source tree and is not wiped by a later COPY.
+# (.dockerignore excludes node_modules/, frontend/dist/, .git, etc.)
+COPY . /reminder_app/
+
 # ── Frontend build ────────────────────────────────────────────────────────────
-# Build the React app so frontend/dist/index.html is available for Django's
-# catch-all TemplateView and the compiled assets are picked up by collectstatic.
-# VITE_* build-time env vars can be passed as --build-arg at image build time.
+# Builds the React app after source is in place so frontend/dist/ ends up at
+# /reminder_app/frontend/dist/ — picked up by TEMPLATES['DIRS'] and
+# STATICFILES_DIRS in settings.py for Django to serve via Whitenoise.
+# VITE_* env vars are baked into the JS bundle at build time.
 ARG VITE_API_BASE=http://localhost:8000
 ARG VITE_CLIENT_ID=changeme
 ENV VITE_API_BASE=${VITE_API_BASE}
 ENV VITE_CLIENT_ID=${VITE_CLIENT_ID}
 
-COPY frontend/package*.json /reminder_app/frontend/
-RUN cd /reminder_app/frontend && npm ci --silent
-
-COPY frontend/ /reminder_app/frontend/
-RUN cd /reminder_app/frontend && npm run build
-
-# ── Application code ──────────────────────────────────────────────────────────
-COPY . /reminder_app/
+RUN cd /reminder_app/frontend && npm ci --silent && npm run build
 
 # ── Runtime setup ─────────────────────────────────────────────────────────────
 RUN mkdir -p /reminder_app/staticfiles
