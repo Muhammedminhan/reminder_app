@@ -1,3 +1,4 @@
+import os
 import uuid
 from django.shortcuts import redirect, reverse
 from django.http import JsonResponse, HttpResponse, HttpResponseForbidden, HttpResponseBadRequest, HttpResponseServerError
@@ -60,9 +61,9 @@ def process_tasks_webhook(request):
     Webhook endpoint for processing scheduled tasks
     OWASP: Authenticated via X-Webhook-Token header.
     """
-    token = request.headers.get('X-Webhook-Token')
-    expected = getattr(settings, 'WEBHOOK_TOKEN', None)
-    if expected and token != expected:
+    expected = os.environ.get('WEBHOOK_TOKEN')
+    token = request.headers.get('X-Webhook-Token') or request.POST.get('token')
+    if not expected or token != expected:
         return JsonResponse({"status": "error", "message": "Unauthorized"}, status=401)
 
     try:
@@ -79,9 +80,9 @@ def process_reminders_webhook(request):
     Webhook endpoint for processing reminder tasks
     OWASP: Authenticated via X-Webhook-Token header.
     """
-    token = request.headers.get('X-Webhook-Token')
-    expected = getattr(settings, 'WEBHOOK_TOKEN', None)
-    if expected and token != expected:
+    expected = os.environ.get('WEBHOOK_TOKEN')
+    token = request.headers.get('X-Webhook-Token') or request.POST.get('token')
+    if not expected or token != expected:
         return JsonResponse({"status": "error", "message": "Unauthorized"}, status=401)
 
     try:
@@ -111,6 +112,11 @@ def fallback_notification_webhook(request):
     Webhook endpoint for triggering fallback notification logic.
     Can be called by Cloud Scheduler or external cron jobs.
     """
+    expected = os.environ.get('WEBHOOK_TOKEN')
+    token = request.headers.get('X-Webhook-Token') or request.POST.get('token')
+    if not expected or token != expected:
+        return JsonResponse({"error": "Unauthorized"}, status=401)
+
     from .tasks import check_and_notify_admin_for_email_threshold
     try:
         check_and_notify_admin_for_email_threshold()
@@ -395,8 +401,15 @@ def login_password(request):
             challenge_id = secrets.token_urlsafe(16)
             cache.set(f"mfa:challenge:{challenge_id}", {'user_id': user.id}, timeout=120)
             return JsonResponse({'ok': True, 'mfa_required': True, 'mfa_challenge_id': challenge_id})
-        # No MFA required
-        return JsonResponse({'ok': True, 'mfa_required': False})
+        # No MFA required — issue JWT tokens directly
+        from rest_framework_simplejwt.tokens import RefreshToken
+        refresh = RefreshToken.for_user(user)
+        return JsonResponse({
+            'ok': True,
+            'mfa_required': False,
+            'access': str(refresh.access_token),
+            'refresh': str(refresh),
+        })
     except json.JSONDecodeError:
         return JsonResponse({'ok': False, 'message': 'invalid json'}, status=400)
     except Exception as e:
@@ -645,6 +658,11 @@ def process_slack_pending_reminders_webhook(request):
     """Webhook to trigger sending Slack notifications for pending reminders.
     Intended to be called by a scheduler at 09:00 local time.
     """
+    expected = os.environ.get('WEBHOOK_TOKEN')
+    token = request.headers.get('X-Webhook-Token') or request.POST.get('token')
+    if not expected or token != expected:
+        return JsonResponse({"ok": False, "error": "Unauthorized"}, status=401)
+
     try:
         from .tasks import process_slack_pending_reminders
         result = process_slack_pending_reminders()
@@ -695,7 +713,6 @@ def sso_acs(request, company_id):
         saml_settings = SAMLHelper.get_settings(sso_settings, host=request.get_host())
         auth = OneLogin_Saml2_Auth(req, saml_settings)
 
-        auth.process_response()
         auth.process_response()
         errors = auth.get_errors()
         if errors:
@@ -784,9 +801,9 @@ def sso_metadata(request):
     req = SAMLHelper.get_saml_request(request)
     saml_settings = SAMLHelper.get_settings(sso_settings, host=request.get_host())
     auth = OneLogin_Saml2_Auth(req, saml_settings)
-    settings = auth.get_settings()
-    metadata = settings.get_sp_metadata()
-    errors = settings.validate_metadata(metadata)
+    saml_settings = auth.get_settings()
+    metadata = saml_settings.get_sp_metadata()
+    errors = saml_settings.validate_metadata(metadata)
 
     if len(errors) == 0:
         return HttpResponse(metadata, content_type='text/xml')
@@ -1118,7 +1135,7 @@ def google_auth_callback(request):
             
         # Create a new access token
         local_token = secrets.token_urlsafe(32)
-        expires = timezone.now() + timedelta(days=30)
+        expires = timezone.now() + timedelta(hours=1)
         
         AccessToken.objects.create(
             user=user,

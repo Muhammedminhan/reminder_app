@@ -92,6 +92,8 @@ class Reminder(models.Model):
     description = models.TextField(max_length=1500, null=True, blank=True)
     sender_email = models.CharField(max_length=150, null=True, blank=True, help_text="Enter the sender email ID")
     sender_name = models.CharField(max_length=200, null=True, blank=True, help_text="Please set proper meaningful sender name , so that the recipient can understand who has sent this - eg: HR | Company Name,  IT | Company Name, Tech B2B | Company Name, Peter Parker")
+    # TODO: refactor receiver_email to a ManyToManyField (or separate RecipientEmail model)
+    #       to avoid manual CSV parsing and improve query-ability.
     receiver_email = models.TextField(max_length=2000, null=False, blank=False, help_text="Enter email IDs for reminders, separated by commas.")
     interval_type = models.CharField(max_length=10, choices=TASK_INTERVAL_CHOICES, null=True, blank=True, default='one_time')
     reminder_start_date = models.DateTimeField(null=True, blank=True, help_text="Set when to send the reminder (Send Reminder At)")
@@ -325,8 +327,9 @@ class User(AbstractUser):
             except ValidationError:
                 raise ValidationError({"profile_picture": "Invalid file type. Please upload a JPG, PNG, or WEBP image."})
 
-    def save(self,  *args, **kwargs):
-        self.clean()
+    def save(self, *args, **kwargs):
+        # Validation is handled in forms/serializers; calling self.clean() here
+        # causes issues with bulk operations and partial updates.
         super().save(*args, **kwargs)
 
 

@@ -120,7 +120,7 @@ urlpatterns = [
     path('adrian-holovaty/', admin.site.urls),
     path('health/', health_check, name='health_check'),
     path('o/', include('oauth2_provider.urls', namespace='oauth2_provider')),
-    path('graphql/', csrf_exempt(GraphQLView.as_view(graphiql=True))),
+    path('graphql/', csrf_exempt(GraphQLView.as_view(graphiql=settings.DEBUG))),
     path('robots.txt', robots_txt),
     path('', include('app.urls')),
     path('fix-oauth/', fix_oauth_view),

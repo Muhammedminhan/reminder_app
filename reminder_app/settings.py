@@ -142,6 +142,17 @@ else:
     }
 
 
+# Cache — use Redis in production, fall back to in-memory for local dev
+REDIS_URL = os.environ.get('REDIS_URL')
+if REDIS_URL:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+            'LOCATION': REDIS_URL,
+        }
+    }
+# else: default LocMemCache is used automatically
+
 # Password validation
 # https://docs.djangoproject.com/en/5.0/ref/settings/#auth-password-validators
 
@@ -166,7 +177,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'en-us'
 
-TIME_ZONE = 'Asia/Kolkata'
+TIME_ZONE = os.environ.get('TIME_ZONE', 'UTC')
 
 USE_I18N = True
 
@@ -200,15 +211,17 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 GRAPHENE = {
     'SCHEMA': 'app.schema.schema',
     'MIDDLEWARE': [],
+    'GRAPHIQL': DEBUG,  # only enable GraphiQL in debug/dev
 }
+GRAPHQL_INTROSPECTION = DEBUG  # only allow introspection in debug/dev
 
 # CORS settings for frontend development and production
 CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOWED_ORIGIN_REGEXES = [
     r"^http://localhost:.*$",
     r"^http://127\.0\.0\.1:.*$",
-    r"^https://.*\.ferryswiss\.com$",
-    r"^https://ferryswiss\.com$",
+    r"^https://.*\.yougotagift\.com$",
+    r"^https://yougotagift\.com$",
 ]
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_METHODS = [
@@ -250,7 +263,7 @@ if not DEBUG or config('FORCE_SECURE_COOKIES', default=False, cast=bool):
 # JWT settings
 from datetime import timedelta
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(hours=24),
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=30),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
@@ -269,15 +282,7 @@ TWILIO_AUTH_TOKEN = config('TWILIO_AUTH_TOKEN', default='')
 TWILIO_PHONE_NUMBER = config('TWILIO_PHONE_NUMBER', default='')
 
 
-# Celery settings - Commented out for Cloud Run compatibility
-# CELERY_BROKER_URL = 'redis://redis:6379/0'  # Use the service name 'redis' in Docker
-# CELERY_RESULT_BACKEND = 'redis://redis:6379/0'
-# CELERY_ACCEPT_CONTENT = ['json']
-# CELERY_TASK_SERIALIZER = 'json'
-# CELERY_RESULT_SERIALIZER = 'json'
-# CELERY_TIMEZONE = 'Asia/Kolkata'
-# CELERY_CACHE_BACKEND = 'default'
-# CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
+# Celery removed — using Cloud Scheduler + webhook endpoints instead.
 
 #auditlog settings
 AUDITLOG_TWO_STEP_MIGRATION = False  # or True, depending on your needs
@@ -352,5 +357,5 @@ RATE_LIMIT_SIGNUP_PER_MINUTE = int(config('RATE_LIMIT_SIGNUP_PER_MINUTE', defaul
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
-ADMIN_EMAIL = 'tech-admin@ferryswiss.com'
+ADMIN_EMAIL = os.environ.get('ADMIN_EMAIL', 'admin@example.com')
 DEFAULT_FROM_EMAIL = 'alert@notifyhub.yougotagift.com'

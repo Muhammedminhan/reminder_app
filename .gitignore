@@ -240,6 +240,8 @@ base/__pycache__/
 dummy/__pycache__/
 base/migrations/__pycache__/
 
+node_modules/
+*.postman_collection.json
 data/
 db.sqlite3
 test*.py

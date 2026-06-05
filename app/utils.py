@@ -1,7 +1,7 @@
 # /reminder_app/app/utils.py
 
-import random
 import json
+import secrets
 import string
 from datetime import timedelta
 from dateutil.relativedelta import relativedelta
@@ -41,7 +41,9 @@ USE_BRANDED_SENDER = config('USE_BRANDED_SENDER', default=True, cast=bool)
 
 
 def generate_unique_id():
-    return ''.join(random.choices(string.ascii_letters + string.digits, k=5))
+    # Use secrets for cryptographically secure random IDs
+    alphabet = string.ascii_letters + string.digits
+    return ''.join(secrets.choice(alphabet) for _ in range(5))
 
 
 def filter_company(request, qs):
