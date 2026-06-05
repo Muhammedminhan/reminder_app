@@ -50,7 +50,7 @@ def drop_sendgrid_table(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('app', '0003_relax_sendgriddomainauth_customer_id'),
+        ('app', '0004_squashed_note'),
     ]
 
     operations = [
