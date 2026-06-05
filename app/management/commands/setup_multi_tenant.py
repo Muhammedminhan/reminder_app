@@ -17,8 +17,8 @@ class Command(BaseCommand):
         parser.add_argument(
             '--owner-domain',
             type=str,
-            default='fs.com',
-            help='Owner domain (default: fs.com)'
+            default='yourdomain.com',
+            help='Owner domain (default: yourdomain.com)'
         )
         parser.add_argument(
             '--owner-email',

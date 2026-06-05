@@ -10,14 +10,14 @@ User = get_user_model()
 
 
 class Command(BaseCommand):
-    help = 'Set up domain mapping for owner domain (notifyhub.fs.com)'
+    help = 'Set up domain mapping for owner domain (notifyhub.yourdomain.com)'
 
     def add_arguments(self, parser):
         parser.add_argument(
             '--domain',
             type=str,
-            default='fs.com',
-            help='Owner domain (default: fs.com)'
+            default='yourdomain.com',
+            help='Owner domain (default: yourdomain.com)'
         )
         parser.add_argument(
             '--email',
