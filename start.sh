@@ -71,10 +71,13 @@ else
     echo "=== Skipping Migrations (no DB_HOST) ==="
 fi
 
-# Collect static files
+# Collect static files — exit on failure.
+# A failed collectstatic means the admin panel loads with no CSS in production.
+# This is not a recoverable situation; better to abort and fix the root cause.
 echo "=== Collecting Static Files ==="
 python manage.py collectstatic --noinput --clear || {
-    echo "WARNING: Static file collection failed, but continuing..."
+    echo "ERROR: collectstatic failed. Aborting startup."
+    exit 1
 }
 
 # ── Create superuser from env vars — never use a hardcoded default password ──

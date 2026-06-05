@@ -214,10 +214,13 @@ STATICFILES_STORAGE = 'whitenoise.storage.StaticFilesStorage'
 STATIC_URL = '/static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
-# Add this to ensure admin static files are included
-STATICFILES_DIRS = [
-    os.path.join(BASE_DIR, 'static'),
-]
+# STATICFILES_DIRS intentionally left empty.
+# Django's app-directory finders locate admin and third-party static files
+# automatically. A project-level static/ dir is not needed unless custom
+# static assets are added — add an entry here if that changes.
+# (Previously pointed to static/ which didn't exist in the repo, causing
+#  ImproperlyConfigured when running collectstatic outside Docker.)
+STATICFILES_DIRS = []
 
 # Whitenoise settings for better static file handling
 WHITENOISE_USE_FINDERS = True
@@ -391,9 +394,17 @@ if GCS_BUCKET_NAME:
     # pip install django-storages[google]
     DEFAULT_FILE_STORAGE = 'storages.backends.gcloud.GoogleCloudStorage'
     GS_BUCKET_NAME = GCS_BUCKET_NAME
-    GS_DEFAULT_ACL = 'publicRead'          # adjust to 'private' if serving via signed URLs
+    # Files are PRIVATE — the codebase has a serve_protected_media view that
+    # enforces authentication before streaming files. Using publicRead here
+    # would bypass that check and expose profile pictures / attachments to
+    # anyone with the GCS URL.
+    GS_DEFAULT_ACL = None                  # no public ACL; bucket default applies
+    GS_QUERYSTRING_AUTH = True             # generate short-lived signed URLs
+    GS_EXPIRATION = timedelta(minutes=30)  # signed URL lifetime
     GS_FILE_OVERWRITE = False
-    MEDIA_URL = f'https://storage.googleapis.com/{GCS_BUCKET_NAME}/'
+    # MEDIA_URL is not used directly — serve_protected_media proxies all reads
+    # via Django so auth is enforced regardless of storage backend.
+    MEDIA_URL = '/media/'
     MEDIA_ROOT = ''                        # not used when GCS is active
 else:
     # Local filesystem — fine for development, NOT suitable for production on Cloud Run
