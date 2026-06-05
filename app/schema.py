@@ -1,5 +1,6 @@
 import graphene
 from django.utils import timezone
+from datetime import timedelta
 from graphene_django import DjangoObjectType
 from django.contrib.auth import get_user_model
 from django.db.models import Q
@@ -327,39 +328,48 @@ class Query(graphene.ObjectType):
         return activities
 
     def resolve_slack_channels(self, info):
-        # Fetch from Slack API
+        # Auth guard — same pattern as every other resolver
+        user = get_authenticated_user(info)
+        if not user:
+            return []
+
         from decouple import config
         token = config('SLACK_BOT_TOKEN', default='')
         channels = []
         if token:
             try:
                 import requests
-                resp = requests.get('https://slack.com/api/conversations.list', headers={'Authorization': f'Bearer {token}'}, params={'exclude_archived': 'true'}, timeout=6)
+                resp = requests.get(
+                    'https://slack.com/api/conversations.list',
+                    headers={'Authorization': f'Bearer {token}'},
+                    params={'exclude_archived': 'true'},
+                    timeout=6,
+                )
                 data = resp.json()
                 if data.get('ok'):
                     for ch in data.get('channels', []):
                         channels.append(SlackChannelType(id=ch['id'], name=ch['name']))
             except Exception:
                 pass
-        
-        # Fallback list if none fetched (for development/demo)
+
+        # Fallback for development/demo when no Slack token is configured
         if not channels:
             channels = [
-                SlackChannelType(id='#general', name='general'),
-                SlackChannelType(id='#random', name='random'),
+                SlackChannelType(id='#general',     name='general'),
+                SlackChannelType(id='#random',      name='random'),
                 SlackChannelType(id='#engineering', name='engineering'),
-                SlackChannelType(id='#marketing', name='marketing')
+                SlackChannelType(id='#marketing',   name='marketing'),
             ]
         return channels
 
     def resolve_me(self, info):
-        # Force a refresh from the database to ensure all fields (email, firstName, etc.) are populated
+        # Force a refresh from the database to ensure all fields are populated
         user = get_authenticated_user(info)
         if user:
-            from django.contrib.auth import get_user_model
             try:
-                # Return a fresh instance from the DB
-                u = get_user_model().objects.get(pk=user.pk)
+                return get_user_model().objects.get(pk=user.pk)
+            except get_user_model().DoesNotExist:
+                pass
         return None
  
     def resolve_users(self, info):
@@ -599,31 +609,76 @@ class Query(graphene.ObjectType):
         return [ur.role for ur in user_roles]
 
     def resolve_system_performance(self, info, period='Weekly'):
-        import random
-        # In a real app, we would query historical data
-        # For 'Weekly', return 7 points; 'Monthly', 12; 'Daily', 24
-        count = 7
-        if period == 'Monthly':
-            count = 12
-        elif period == 'Daily':
-            count = 24
-        
-        # We can also base this on actual reminders in the DB to make it somewhat realistic
-        # but for "live" feel, we might want some randomness or just the count.
-        # Let's return some semi-random data based on a seed for consistency per call but shifting with time?
-        # Actually, let's just return a nice set of points.
+        """Return real delivery counts from ReminderDelivery, bucketed by period.
+
+        Previously this returned fabricated random data. It now queries the
+        ReminderDelivery table (populated whenever a reminder is successfully
+        sent) and groups records by day/hour so the chart shows actual activity.
+
+        Auth guard added — this resolver was previously unauthenticated.
+        """
+        user = get_authenticated_user(info)
+        if not user:
+            return []
+
         from django.utils import timezone
-        import math
-        
-        points = []
+        from django.db.models.functions import TruncDay, TruncHour, TruncMonth
+        from django.db.models import Count
+        from .models import ReminderDelivery
+
         now = timezone.now()
+
+        # Determine bucket size and lookback window
+        if period == 'Daily':
+            trunc_fn = TruncHour
+            since = now - timedelta(hours=24)
+            fmt = lambda dt: dt.strftime('%H:00')
+            count = 24
+        elif period == 'Monthly':
+            trunc_fn = TruncMonth
+            since = now - timedelta(days=365)
+            fmt = lambda dt: dt.strftime('%b')
+            count = 12
+        else:  # Weekly (default)
+            trunc_fn = TruncDay
+            since = now - timedelta(days=7)
+            fmt = lambda dt: dt.strftime('%a')
+            count = 7
+
+        # Scope to company for non-superusers
+        qs = ReminderDelivery.objects.filter(sent_at__gte=since)
+        if not user.is_superuser and getattr(user, 'company_id', None):
+            qs = qs.filter(reminder__company_id=user.company_id)
+
+        # Aggregate counts per bucket
+        rows = (
+            qs.annotate(bucket=trunc_fn('sent_at'))
+              .values('bucket')
+              .annotate(total=Count('id'))
+              .order_by('bucket')
+        )
+        bucket_map = {row['bucket']: row['total'] for row in rows}
+
+        # Build a full series with zero-fill for empty buckets
+        points = []
         for i in range(count):
-            # Create a wave pattern with some noise
-            base = 100 + 40 * math.sin(i * 0.8)
-            noise = random.randint(-15, 15)
-            value = max(20, int(base + noise))
-            points.append(PerformancePoint(label=f"T{i}", value=value))
-            
+            if period == 'Daily':
+                dt = (now - timedelta(hours=count - 1 - i)).replace(minute=0, second=0, microsecond=0)
+            elif period == 'Monthly':
+                # Step back month by month
+                month_offset = count - 1 - i
+                year = now.year
+                month = now.month - month_offset
+                while month <= 0:
+                    month += 12
+                    year -= 1
+                dt = now.replace(year=year, month=month, day=1, hour=0, minute=0, second=0, microsecond=0)
+            else:
+                dt = (now - timedelta(days=count - 1 - i)).replace(hour=0, minute=0, second=0, microsecond=0)
+
+            value = bucket_map.get(dt, 0)
+            points.append(PerformancePoint(label=fmt(dt), value=value))
+
         return points
 
     def resolve_dashboard_stats(self, info):

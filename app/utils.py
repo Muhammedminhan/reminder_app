@@ -841,46 +841,94 @@ def process_scheduled_tasks():
 
 
 def process_reminder_tasks():
+    """Process due reminders with an atomic claim step to prevent double-sends.
+
+    Race-condition fix: instead of reading a row and then updating it in two
+    separate DB round-trips (which lets two concurrent webhook invocations both
+    read send=False before either writes send=True), we use a single atomic
+    UPDATE ... WHERE send=False that returns the number of rows updated.
+    Only the process that gets updated=1 proceeds to send the email; the other
+    gets updated=0 and skips — so the email is sent exactly once even when two
+    Cloud Scheduler jobs fire simultaneously or a retry occurs.
+    """
+    from django.db import transaction
+
     now = timezone.now()
     processed = 0
     sent = 0
     skipped_end_date = 0
-    # Auto-deactivate expired reminders
-    expired_qs = Reminder.objects.filter(active=True, reminder_end_date__lt=now)
-    deactivated = expired_qs.update(active=False) if expired_qs.exists() else 0
 
-    due_reminders = Reminder.objects.filter(
-        reminder_start_date__lte=now,
-        send=False,
-        active=True
+    # Auto-deactivate expired reminders (bulk UPDATE — safe to do once)
+    deactivated = Reminder.objects.filter(
+        active=True,
+        reminder_end_date__lt=now,
+    ).update(active=False)
+
+    # Fetch candidate IDs only — no lock held yet
+    candidate_ids = list(
+        Reminder.objects.filter(
+            reminder_start_date__lte=now,
+            send=False,
+            active=True,
+        ).values_list('id', flat=True)
     )
 
-    for reminder in due_reminders:
+    for reminder_id in candidate_ids:
         try:
             processed += 1
+
+            # ── Atomic claim: flip send=True only if it is still False ──────
+            # If two processes race here, only one UPDATE succeeds (affected=1);
+            # the other gets affected=0 and skips — no double-send.
+            with transaction.atomic():
+                claimed = Reminder.objects.filter(
+                    pk=reminder_id,
+                    send=False,
+                    active=True,
+                ).update(send=True)
+
+            if not claimed:
+                logger.debug(f"Reminder {reminder_id} already claimed by another process — skipping")
+                continue
+
+            # We now own this reminder for this cycle; fetch full object
+            try:
+                reminder = Reminder.objects.get(pk=reminder_id)
+            except Reminder.DoesNotExist:
+                continue
+
             if reminder.reminder_end_date and now > reminder.reminder_end_date:
+                # Past end date — release the claim and skip
+                Reminder.objects.filter(pk=reminder_id).update(send=False)
                 skipped_end_date += 1
                 logger.info(f"Reminder skipped - past end date {reminder.reminder_end_date}")
                 continue
 
             if _should_send_reminder(reminder, now):
                 if _send_reminder_email(reminder):
-                    reminder.send = True
-                    reminder.completed = False  # reset completion
-                    reminder.save(update_fields=['send','completed'])
-                    # NEW: Slack notify creator if pending
+                    reminder.completed = False
+                    reminder.save(update_fields=['completed'])
                     _notify_slack_pending_reminder(reminder)
                     sent += 1
                     if reminder.interval_type and reminder.interval_type != 'one_time':
                         _schedule_next_reminder(reminder)
                     logger.info(f"Successfully sent reminder {reminder.id}: {reminder.title}")
                 else:
+                    # Email failed — release the claim so it will be retried next cycle
+                    Reminder.objects.filter(pk=reminder_id).update(send=False)
                     logger.error(f"Failed to send reminder {reminder.id}: {reminder.title}")
             else:
+                # Not ready yet — release the claim
+                Reminder.objects.filter(pk=reminder_id).update(send=False)
                 logger.debug(f"Reminder {reminder.id} not ready to send yet")
 
         except Exception as e:
-            logger.error(f"Error processing reminder {reminder.id}: {e}")
+            logger.error(f"Error processing reminder {reminder_id}: {e}")
+            # Release the claim on unexpected errors so the reminder is retried
+            try:
+                Reminder.objects.filter(pk=reminder_id, send=True).update(send=False)
+            except Exception:
+                pass
 
     logger.info(
         f"Reminder processing complete: {processed} processed, {sent} sent, {skipped_end_date} skipped (past end date), {deactivated} deactivated")
