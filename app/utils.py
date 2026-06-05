@@ -980,6 +980,30 @@ def _should_send_reminder(reminder, now):
         return False
 
 
+def _record_delivery(reminder, recipients, subject, status='sent', sender=None):
+    """Write one ReminderDelivery row after a successful (or simulated) send.
+
+    This is the only place ReminderDelivery rows are created.  The performance
+    chart (resolve_system_performance in schema.py) queries this table — without
+    these writes, every user sees a flat-zero chart regardless of send volume.
+    Called from every successful send path in _send_reminder_email().
+    """
+    try:
+        from .models import ReminderDelivery
+        ReminderDelivery.objects.create(
+            reminder=reminder,
+            status=status,
+            data_snapshot={
+                'subject':    subject,
+                'recipients': recipients,
+                'sender':     sender or '',
+            },
+        )
+    except Exception as exc:
+        # Non-fatal — a delivery record failure must never block the email send
+        logger.warning(f"_record_delivery failed for reminder {getattr(reminder, 'id', '?')}: {exc}")
+
+
 def _send_reminder_email(reminder):
     """Send the reminder email using SendGrid if configured.
     Returns True on (attempted) success. If SENDGRID_API_KEY is missing we log a warning
@@ -1022,6 +1046,7 @@ def _send_reminder_email(reminder):
         )
         if not SENDGRID_API_KEY:
             logger.warning(f"_send_reminder_email: SENDGRID_API_KEY not set; NOT sending real email for reminder {reminder.id}. Marking as sent (simulation). from_name='{from_name}'")
+            _record_delivery(reminder, recipients, subject, 'simulated')
             return True
         try:
             import sendgrid
@@ -1057,6 +1082,7 @@ def _send_reminder_email(reminder):
         ok, status, body = _do_send(from_email_addr)
         if ok:
             logger.info(f"SendGrid delivered reminder {reminder.id} status={status} sender='{from_email_addr}' from_name='{from_name}'")
+            _record_delivery(reminder, recipients, subject, 'sent', sender=from_email_addr)
             return True
         # If 403 or 4xx likely due to sender domain/auth, retry once with default_from (if different)
         should_retry_with_default = (str(status).startswith('4') and default_from and default_from != from_email_addr)
@@ -1070,6 +1096,7 @@ def _send_reminder_email(reminder):
             ok2, status2, body2 = _do_send(default_from)
             if ok2:
                 logger.info(f"[REMINDER_EMAIL_RETRY_OK] id={reminder.id} status={status2} sender='{default_from}'")
+                _record_delivery(reminder, recipients, subject, 'sent', sender=default_from)
                 return True
             logger.error(f"[REMINDER_EMAIL_RETRY_FAIL] id={reminder.id} status={status2} body_snippet={(body2 or '')[:500]}")
             return False

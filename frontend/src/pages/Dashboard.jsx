@@ -747,7 +747,7 @@ export default function Dashboard() {
                                                                             {reminder.attachments.map(att => (
                                                                                 <a 
                                                                                     key={att.id} 
-                                                                                    href={`${import.meta.env.VITE_API_BASE || 'http://localhost:8000'}${att.url}`}
+                                                                                    href={`${import.meta.env.VITE_API_BASE || 'http://localhost:8000'}${att.url}?token=${localStorage.getItem('access_token') || ''}`}
                                                                                     target="_blank"
                                                                                     rel="noopener noreferrer"
                                                                                     style={{ color: 'var(--primary-glow)', display: 'flex' }}
@@ -1480,7 +1480,7 @@ export default function Dashboard() {
                                             {selectedReminder.attachments.map(att => (
                                                 <a 
                                                     key={att.id} 
-                                                    href={`${import.meta.env.VITE_API_BASE || 'http://localhost:8000'}${att.url}`}
+                                                    href={`${import.meta.env.VITE_API_BASE || 'http://localhost:8000'}${att.url}?token=${localStorage.getItem('access_token') || ''}`}
                                                     target="_blank"
                                                     rel="noopener noreferrer"
                                                     className="att-link"
