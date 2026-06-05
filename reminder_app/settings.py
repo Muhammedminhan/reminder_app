@@ -47,14 +47,15 @@ SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 CSRF_COOKIE_SECURE = config('CSRF_COOKIE_SECURE', default=not DEBUG, cast=bool)
 SESSION_COOKIE_SECURE = config('SESSION_COOKIE_SECURE', default=not DEBUG, cast=bool)
 
-CSRF_TRUSTED_ORIGINS = [
-    'https://notifyhub-696620670636.us-central1.run.app',
-    'http://localhost:8000',
-    'http://127.0.0.1:8000',
-    'http://0.0.0.0:8000',
-    'http://localhost:5173',
-    'http://127.0.0.1:5173',
-]
+# CSRF_TRUSTED_ORIGINS — REQUIRED in production.
+# Comma-separated list of origins that are trusted for POST requests.
+# Must include your Cloud Run URL and any custom domain.
+# e.g. https://your-service-id.run.app,https://app.yourdomain.com
+CSRF_TRUSTED_ORIGINS = config(
+    'CSRF_TRUSTED_ORIGINS',
+    default='http://localhost:8000,http://127.0.0.1:8000,http://localhost:5173,http://127.0.0.1:5173',
+    cast=lambda v: [s.strip() for s in v.split(',') if s.strip()],
+)
 
 # Application definition
 
@@ -109,7 +110,8 @@ ROOT_URLCONF = 'reminder_app.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        # Include the compiled React build so Django's TemplateView can serve index.html
+        'DIRS': [os.path.join(BASE_DIR, 'frontend', 'dist')],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -241,13 +243,11 @@ STATICFILES_STORAGE = 'whitenoise.storage.StaticFilesStorage'
 STATIC_URL = '/static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
-# STATICFILES_DIRS intentionally left empty.
-# Django's app-directory finders locate admin and third-party static files
-# automatically. A project-level static/ dir is not needed unless custom
-# static assets are added — add an entry here if that changes.
-# (Previously pointed to static/ which didn't exist in the repo, causing
-#  ImproperlyConfigured when running collectstatic outside Docker.)
-STATICFILES_DIRS = []
+# Include the compiled React build assets so collectstatic picks them up.
+# frontend/dist/assets/ contains the Vite-compiled JS/CSS bundles.
+# Only included if the dist directory actually exists (not present before first build).
+_frontend_dist = os.path.join(BASE_DIR, 'frontend', 'dist')
+STATICFILES_DIRS = [_frontend_dist] if os.path.isdir(_frontend_dist) else []
 
 # Whitenoise settings for better static file handling
 WHITENOISE_USE_FINDERS = True
@@ -273,14 +273,16 @@ GRAPHENE = {
     'GRAPHIQL': DEBUG,  # browser IDE only in dev
 }
 
-# CORS settings for frontend development and production
+# CORS settings — REQUIRED in production.
+# CORS_ALLOWED_ORIGINS: comma-separated list of origins allowed to make
+# cross-origin requests (GraphQL, API). Must include your frontend URL.
+# e.g. https://app.yourdomain.com,https://your-cloudrun-url.run.app
 CORS_ALLOW_ALL_ORIGINS = False
-CORS_ALLOWED_ORIGIN_REGEXES = [
-    r"^http://localhost:.*$",
-    r"^http://127\.0\.0\.1:.*$",
-    r"^https://.*\.yougotagift\.com$",
-    r"^https://yougotagift\.com$",
-]
+CORS_ALLOWED_ORIGINS = config(
+    'CORS_ALLOWED_ORIGINS',
+    default='http://localhost:5173,http://127.0.0.1:5173,http://localhost:8000',
+    cast=lambda v: [s.strip() for s in v.split(',') if s.strip()],
+)
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_METHODS = [
     'DELETE',

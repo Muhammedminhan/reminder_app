@@ -983,8 +983,9 @@ def sso_sls(request):
 
 
 def index(request):
-    """Simple root view."""
-    return HttpResponse("NotifyHub SSO Login Successful. Welcome!")
+    """Root view — redirects to the React app (served via the catch-all in urls.py)."""
+    from django.shortcuts import redirect as _redirect
+    return _redirect('/')
 
 @csrf_exempt
 @require_http_methods(["POST"])
