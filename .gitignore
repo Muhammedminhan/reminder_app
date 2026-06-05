@@ -16,6 +16,11 @@ eggs/
 .eggs/
 lib/
 lib64/
+# Un-ignore the frontend src/lib/ directory — it contains source files (api.js,
+# apollo.js) that must be in the repo. The `lib/` rule above is Python-specific
+# (virtual env lib dirs) and should not affect frontend source code.
+!frontend/src/lib/
+!frontend/src/lib/**
 parts/
 sdist/
 var/
