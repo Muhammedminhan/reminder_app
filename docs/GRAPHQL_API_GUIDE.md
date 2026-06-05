@@ -30,15 +30,16 @@ curl -X POST http://localhost:8000/o/token/ \
   -d "grant_type=password" \
   -d "username=YOUR_USERNAME" \
   -d "password=YOUR_PASSWORD" \
-  -d "client_id=YOUR_CLIENT_ID" \
-  -d "client_secret=YOUR_CLIENT_SECRET"
+  -d "client_id=YOUR_CLIENT_ID"
 ```
+
+> **Note:** The app uses `CLIENT_PUBLIC` OAuth type — no `client_secret` is required or accepted. Do not include one.
 
 **Response:**
 ```json
 {
   "access_token": "your-access-token-here",
-  "expires_in": 36000,
+  "expires_in": 1800,
   "token_type": "Bearer",
   "scope": "read write",
   "refresh_token": "your-refresh-token-here"
@@ -271,7 +272,7 @@ async function login(username, password) {
       username: username,
       password: password,
       client_id: 'YOUR_CLIENT_ID',
-      client_secret: 'YOUR_CLIENT_SECRET',
+      // No client_secret — CLIENT_PUBLIC apps don't use one
     }),
   });
   
@@ -354,8 +355,7 @@ curl -X POST http://localhost:8000/o/token/ \
   -H "Content-Type: application/x-www-form-urlencoded" \
   -d "grant_type=refresh_token" \
   -d "refresh_token=YOUR_REFRESH_TOKEN" \
-  -d "client_id=YOUR_CLIENT_ID" \
-  -d "client_secret=YOUR_CLIENT_SECRET"
+  -d "client_id=YOUR_CLIENT_ID"
 ```
 
 ## 📋 Available Interval Types

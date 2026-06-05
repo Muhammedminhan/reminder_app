@@ -13,25 +13,30 @@ BASE_URL = "http://localhost:8000"  # Change if your server is elsewhere
 GRAPHQL_ENDPOINT = f"{BASE_URL}/graphql/"
 OAUTH_ENDPOINT = f"{BASE_URL}/o/token/"
 
-# OAuth2 credentials (get these from your Django admin or settings)
-CLIENT_ID = "test_client_id"  # Update with your actual client ID
-CLIENT_SECRET = "test_client_secret"  # Update with your actual client secret
+# OAuth2 credentials — the app uses CLIENT_PUBLIC type, so no client_secret
+# is needed or accepted. Only CLIENT_ID is required.
+# Set OAUTH_CLIENT_ID in your environment or update this value directly.
+import os
+CLIENT_ID = os.environ.get('OAUTH_CLIENT_ID', 'your-client-id-here')
 
 # Test user credentials (must be superuser or company admin)
-TEST_USERNAME = "admin"  # Update with your admin username
-TEST_PASSWORD = "admin123"  # Update with your admin password
+# Set via env vars — never hardcode credentials in source files.
+TEST_USERNAME = os.environ.get('TEST_USERNAME', 'admin')
+TEST_PASSWORD = os.environ.get('TEST_PASSWORD', '')  # must be set in env
 
 
 def get_access_token(username, password):
-    """Get OAuth2 access token"""
+    """Get OAuth2 access token using password grant (PUBLIC client — no secret)."""
     print(f"🔐 Getting access token for {username}...")
-    
+
     data = {
         'grant_type': 'password',
         'username': username,
         'password': password,
         'client_id': CLIENT_ID,
-        'client_secret': CLIENT_SECRET,
+        # No client_secret — CLIENT_PUBLIC apps don't use one.
+        # Including a secret would be ignored by Django OAuth Toolkit
+        # and would expose it if this file were ever committed.
     }
     
     response = requests.post(OAUTH_ENDPOINT, data=data)
