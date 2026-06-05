@@ -104,18 +104,19 @@ else:
     echo "WARNING: Superuser check failed, but continuing..."
 }
 
-# ── Set up OAuth application from env vars only — no hardcoded credentials ──
+# ── Set up OAuth application ──────────────────────────────────────────────────
+# The frontend app is CLIENT_PUBLIC (SPA — cannot keep a secret).
+# No client_secret is stored or required.  Only OAUTH_CLIENT_ID is needed.
 echo "=== Setting Up OAuth Application ==="
 python manage.py shell -c "
 import os
 from oauth2_provider.models import Application
 from django.contrib.auth import get_user_model
 
-client_id     = os.environ.get('OAUTH_CLIENT_ID')
-client_secret = os.environ.get('OAUTH_CLIENT_SECRET')
+client_id = os.environ.get('OAUTH_CLIENT_ID')
 
-if not client_id or not client_secret:
-    print('WARNING: OAUTH_CLIENT_ID or OAUTH_CLIENT_SECRET not set — skipping OAuth app setup.')
+if not client_id:
+    print('WARNING: OAUTH_CLIENT_ID not set — skipping OAuth app setup.')
 else:
     User = get_user_model()
     user = User.objects.filter(is_superuser=True).first()
@@ -126,7 +127,7 @@ else:
             client_id=client_id,
             defaults={
                 'name': 'NotifyHub Frontend',
-                'client_secret': client_secret,
+                'client_secret': '',          # PUBLIC client — no secret
                 'client_type': Application.CLIENT_PUBLIC,
                 'authorization_grant_type': Application.GRANT_PASSWORD,
                 'user': user,
