@@ -634,7 +634,10 @@ _MAGIC_BYTES: list[tuple[bytes, set[str]]] = [
     (b'\x89PNG',        {'.png'}),
     (b'\xff\xd8\xff',   {'.jpg', '.jpeg'}),
     (b'GIF8',           {'.gif'}),
-    (b'RIFF',           {'.webp'}),          # RIFF....WEBP
+    # NOTE: RIFF is also used by WAV, AVI, etc. — WebP-specific check is
+    # handled separately in _validate_attachment() by reading bytes 8–11.
+    # This entry is intentionally absent; .webp falls through to the
+    # dedicated RIFF+WEBP check below.
     (b'PK\x03\x04',     {'.docx', '.xlsx', '.pptx', '.zip'}),  # ZIP-based formats
     (b'\xd0\xcf\x11\xe0', {'.doc', '.xls', '.ppt'}),           # OLE2 compound
 ]
@@ -659,10 +662,17 @@ def _validate_attachment(uploaded_file):
         mb = uploaded_file.size / (1024 * 1024)
         return f"File too large ({mb:.1f} MB). Maximum allowed size is 10 MB."
 
-    # Magic-byte check — read first 8 bytes without consuming the stream
+    # Magic-byte check — read first 12 bytes (enough for all signatures + WEBP)
     uploaded_file.seek(0)
-    header = uploaded_file.read(8)
+    header = uploaded_file.read(12)
     uploaded_file.seek(0)
+
+    # WebP requires RIFF at bytes 0–3 AND 'WEBP' at bytes 8–11.
+    # A plain RIFF check would also pass WAV, AVI, etc.
+    if ext == '.webp':
+        if not (header[:4] == b'RIFF' and header[8:12] == b'WEBP'):
+            return "File content does not match its extension '.webp'. Upload rejected."
+        return None
 
     for magic, valid_exts in _MAGIC_BYTES:
         if header.startswith(magic):
@@ -704,6 +714,15 @@ def upload_attachment(request):
         import mimetypes
         safe_mime, _ = mimetypes.guess_type(uploaded_file.name)
         safe_mime = safe_mime or 'application/octet-stream'
+
+        # Superusers may have company=None; ReminderAttachment.company is a
+        # non-nullable FK, so passing None would raise IntegrityError → 500.
+        if not getattr(user, 'company', None):
+            return JsonResponse(
+                {'ok': False, 'message': 'Your account is not assigned to a company. '
+                                         'Please contact an administrator.'},
+                status=400,
+            )
 
         from .models import ReminderAttachment
         attachment = ReminderAttachment.objects.create(
