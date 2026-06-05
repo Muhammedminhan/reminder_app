@@ -17,9 +17,16 @@ from django.conf import settings
 from graphql import GraphQLError
 
 
+# Only __schema and __type are introspection entry points.
+# __typename is a standard GraphQL meta-field that Apollo InMemoryCache
+# appends to every query for cache normalisation — blocking it would break
+# all queries in production. It must remain allowed.
+_INTROSPECTION_FIELDS = frozenset({'__schema', '__type'})
+
+
 class DisableIntrospectionMiddleware:
     def resolve(self, next_middleware, root, info, **kwargs):
-        if not settings.DEBUG and info.field_name.startswith('__'):
+        if not settings.DEBUG and info.field_name in _INTROSPECTION_FIELDS:
             raise GraphQLError(
                 'GraphQL introspection is disabled in this environment.'
             )
