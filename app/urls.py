@@ -14,6 +14,7 @@ from .views import (
     sso_acs,
     sso_acs_legacy,
     sso_metadata,
+    sso_sls,
     get_user_profile,
     index,
     forgot_password,
@@ -48,6 +49,9 @@ urlpatterns = [
     path('sso/acs/<str:company_id>/', sso_acs, name='sso_acs'),
     path('sso/acs/', sso_acs_legacy, name='sso_acs_legacy'),
     path('sso/metadata/', sso_metadata, name='sso_metadata'),
+    # Single Logout Service — registered in SAML SP settings as /sso/sls/
+    # Previously missing, causing IdP-initiated logout to 404.
+    path('sso/sls/', sso_sls, name='sso_sls'),
     # User Profile
     path('user/profile/', get_user_profile, name='get-user-profile'),
     path('user/profile-picture/', upload_profile_picture, name='upload-profile-picture'),

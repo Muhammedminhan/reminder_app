@@ -1,4 +1,6 @@
-FROM python:3.9-alpine3.16
+# python:3.9-alpine3.16 reached end of life on 2024-05-23 — no more CVE patches.
+# Upgraded to python:3.11-alpine3.21 (latest stable, supported until 2027-10).
+FROM python:3.11-alpine3.21
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 

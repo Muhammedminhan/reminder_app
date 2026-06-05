@@ -810,6 +810,72 @@ def sso_metadata(request):
     else:
         return HttpResponseServerError(f"Metadata Error: {', '.join(errors)}")
 
+@csrf_exempt
+def sso_sls(request):
+    """SAML Single Logout Service (SLS) endpoint.
+
+    Handles IdP-initiated and SP-initiated logout flows.  Previously this
+    route was registered in the SAML SP settings (sso.py) but had no
+    corresponding view or URL, causing every IdP logout to 404 and leaving
+    the IdP-side session alive even after the user logged out of NotifyHub.
+
+    The company is identified from the SAMLResponse / LogoutRequest in the
+    request body.  If identification fails we fall back to the session.
+    """
+    from django.contrib.auth import logout as auth_logout
+
+    company_id = request.GET.get('company') or request.POST.get('company')
+    company = None
+
+    if company_id:
+        try:
+            company = Company.objects.get(pk=company_id)
+        except Company.DoesNotExist:
+            pass
+
+    # Attempt to resolve company from the authenticated session user
+    if not company and request.user.is_authenticated:
+        company = getattr(request.user, 'company', None)
+
+    if not company:
+        # No company context — just clear the Django session and redirect
+        auth_logout(request)
+        return redirect('/login')
+
+    sso_settings = getattr(company, 'sso_settings', None)
+    if not sso_settings:
+        auth_logout(request)
+        return redirect('/login')
+
+    try:
+        req = SAMLHelper.get_saml_request(request)
+        saml_settings = SAMLHelper.get_settings(sso_settings, host=request.get_host())
+        auth = OneLogin_Saml2_Auth(req, saml_settings)
+
+        # process_slo() validates the LogoutRequest/Response, terminates the
+        # SAML session, and returns a redirect URL (for the IdP redirect binding).
+        url = auth.process_slo(
+            delete_session_cb=lambda: auth_logout(request),
+            keep_local_session=False,
+        )
+        errors = auth.get_errors()
+        if errors:
+            reason = auth.get_last_error_reason()
+            logger.error(f"SSO SLS errors for company {company.id}: {errors} — {reason}")
+            # Still clear local session on error so the user isn't stuck
+            auth_logout(request)
+            return redirect('/login')
+
+        if url:
+            return redirect(url)
+        return redirect('/login')
+
+    except Exception as e:
+        logger.error(f"SSO SLS exception for company {getattr(company, 'id', '?')}: {e}")
+        auth_logout(request)
+        return redirect('/login')
+
+
 def index(request):
     """Simple root view."""
     return HttpResponse("NotifyHub SSO Login Successful. Welcome!")
