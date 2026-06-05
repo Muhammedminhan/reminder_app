@@ -31,9 +31,16 @@ SECRET_KEY = config('SECRET_KEY', default=os.environ.get('SECRET_KEY', 'change-m
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config('DEBUG', default=False, cast=bool)
 
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1', cast=lambda v: [s.strip() for s in v.split(',')])
-if DEBUG:
-    ALLOWED_HOSTS += ['*', 'localhost', '127.0.0.1', '0.0.0.0']
+# ALLOWED_HOSTS — required in production; start.sh enforces it is set before gunicorn starts.
+# In DEBUG mode we relax to all hosts for local development convenience.
+_allowed_hosts_default = '*' if DEBUG else ''
+ALLOWED_HOSTS = config(
+    'ALLOWED_HOSTS',
+    default=_allowed_hosts_default,
+    cast=lambda v: [s.strip() for s in v.split(',') if s.strip()],
+)
+if DEBUG and '*' not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS += ['localhost', '127.0.0.1', '0.0.0.0']
 
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
@@ -142,8 +149,14 @@ else:
     }
 
 
-# Cache — use Redis in production, fall back to in-memory for local dev
+# ── Cache ────────────────────────────────────────────────────────────────────
+# Redis is REQUIRED in production for:
+#   - Rate limiting to work across Cloud Run instances
+#   - MFA challenge tokens to be found across instances
+#
+# In local dev (DEBUG=True) the in-memory fallback is acceptable.
 REDIS_URL = os.environ.get('REDIS_URL')
+
 if REDIS_URL:
     CACHES = {
         'default': {
@@ -151,7 +164,16 @@ if REDIS_URL:
             'LOCATION': REDIS_URL,
         }
     }
-# else: default LocMemCache is used automatically
+elif not DEBUG:
+    import warnings
+    warnings.warn(
+        'REDIS_URL is not set in a non-DEBUG environment. '
+        'Rate limiting and MFA tokens will NOT work correctly across '
+        'multiple Cloud Run instances. Set REDIS_URL to a shared Redis/Memorystore.',
+        RuntimeWarning,
+        stacklevel=2,
+    )
+# else (DEBUG=True, no Redis): LocMemCache is fine for local development.
 
 # Password validation
 # https://docs.djangoproject.com/en/5.0/ref/settings/#auth-password-validators
@@ -353,9 +375,30 @@ RATE_LIMIT_ENABLED = config('RATE_LIMIT_ENABLED', default=True, cast=bool)
 RATE_LIMIT_LOGIN_PER_MINUTE = int(config('RATE_LIMIT_LOGIN_PER_MINUTE', default=5))
 RATE_LIMIT_SIGNUP_PER_MINUTE = int(config('RATE_LIMIT_SIGNUP_PER_MINUTE', default=3))
 
-# Media files
-MEDIA_URL = '/media/'
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+# ── Media files ──────────────────────────────────────────────────────────────
+# On Cloud Run, the local filesystem is ephemeral — all uploads are lost on
+# restart/redeploy. Use Google Cloud Storage when GCS_BUCKET_NAME is set.
+#
+# Required env vars for GCS:
+#   GCS_BUCKET_NAME       — e.g. "notifyhub-media-prod"
+#   GOOGLE_CLOUD_PROJECT  — GCP project ID (or rely on Application Default Credentials)
+#
+# Local dev (no GCS_BUCKET_NAME): files are written to MEDIA_ROOT as normal.
+
+GCS_BUCKET_NAME = os.environ.get('GCS_BUCKET_NAME', '')
+
+if GCS_BUCKET_NAME:
+    # pip install django-storages[google]
+    DEFAULT_FILE_STORAGE = 'storages.backends.gcloud.GoogleCloudStorage'
+    GS_BUCKET_NAME = GCS_BUCKET_NAME
+    GS_DEFAULT_ACL = 'publicRead'          # adjust to 'private' if serving via signed URLs
+    GS_FILE_OVERWRITE = False
+    MEDIA_URL = f'https://storage.googleapis.com/{GCS_BUCKET_NAME}/'
+    MEDIA_ROOT = ''                        # not used when GCS is active
+else:
+    # Local filesystem — fine for development, NOT suitable for production on Cloud Run
+    MEDIA_URL = '/media/'
+    MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 ADMIN_EMAIL = os.environ.get('ADMIN_EMAIL', 'admin@example.com')
 DEFAULT_FROM_EMAIL = 'alert@notifyhub.yougotagift.com'

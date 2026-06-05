@@ -1,36 +1,75 @@
 version: "3.9"
 
+# ── Local development compose ─────────────────────────────────────────────────
+# This file is for LOCAL development only. Production runs on Cloud Run.
+#
+# Usage:
+#   cp .env.example .env          # fill in your values
+#   docker-compose up --build
+#
+# NOTE: Celery has been removed — background tasks use Cloud Tasks in production.
+# NOTE: For media persistence in local dev, files are written to ./media/
+#       In production, GCS is used (set GCS_BUCKET_NAME env var).
+
 services:
+
   db:
-    image: postgres
+    image: postgres:15-alpine
+    restart: unless-stopped
     volumes:
-      - ./data/db:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
     environment:
-      POSTGRES_DB: ${DATABASES_NAME}
-      POSTGRES_USER: ${DATABASES_USER}
-      POSTGRES_PASSWORD: ${DATABASES_PASSWORD}
+      POSTGRES_DB: ${DB_NAME:-notifyhub}
+      POSTGRES_USER: ${DB_USER:-notifyhub}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-notifyhub}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   redis:
-    image: redis:alpine
+    image: redis:7-alpine
+    restart: unless-stopped
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   web:
     restart: unless-stopped
     build: .
-    command: python manage.py runserver 0.0.0.0:8000
+    # Use gunicorn — same as production; never use runserver outside of ad-hoc debugging
+    command: >
+      gunicorn reminder_app.wsgi:application
+        --bind 0.0.0.0:8000
+        --worker-class gthread
+        --workers 2
+        --threads 4
+        --timeout 120
+        --reload
     volumes:
-      - .:/reminder_app
+      - .:/app
+      - media_files:/app/media
     ports:
       - "8000:8000"
     depends_on:
-      - db
-      - redis
-  celery:
-    build: .
-    command: celery -A reminder_app worker -l info -B
-    volumes:
-      - .:/reminder_app
-    depends_on:
-      - db
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      - DB_HOST=db
+      - DB_PORT=5432
+      - REDIS_URL=redis://redis:6379/0
+
+volumes:
+  postgres_data:
+  media_files:

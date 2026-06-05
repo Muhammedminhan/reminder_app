@@ -3,7 +3,6 @@ from .views import (
     login_redirect,
     process_tasks_webhook,
     process_reminders_webhook,
-    health_check,
     signup,
     login_password,
     mfa_verify,
@@ -17,7 +16,6 @@ from .views import (
     sso_metadata,
     get_user_profile,
     index,
-    robots_txt,
     forgot_password,
     reset_password,
     upload_profile_picture,
@@ -27,15 +25,18 @@ from .views import (
     serve_protected_media,
 )
 
+# NOTE: robots.txt and health/ are intentionally NOT listed here.
+# They are defined in reminder_app/urls.py and registered before this include(),
+# so they always resolve to the canonical versions. Duplicate registrations
+# here would be unreachable dead routes.
+
 urlpatterns = [
-    path('robots.txt', robots_txt, name='robots_txt'),
     path('', index, name='index'),
     path('login-redirect/', login_redirect, name='login-redirect'),
     path('webhook/process-tasks/', process_tasks_webhook, name='process-tasks-webhook'),
     path('webhook/process-reminders/', process_reminders_webhook, name='process-reminders-webhook'),
     path('webhook/fallback-notification/', fallback_notification_webhook, name='fallback-notification-webhook'),
     path('webhook/process-slack-pending/', process_slack_pending_reminders_webhook, name='process-slack-pending-reminders-webhook'),
-    path('health/', health_check, name='health-check'),
     path('signup/', signup, name='signup'),
     # MFA endpoints
     path('login/password/', login_password, name='login-password'),
