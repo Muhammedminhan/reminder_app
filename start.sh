@@ -139,6 +139,16 @@ else:
     echo "WARNING: OAuth setup failed, but continuing..."
 }
 
+# ── Seed roles and permissions ────────────────────────────────────────────────
+# The Permission/Role/UserRole tables are empty on a fresh database.
+# Without this, has_perm_code() returns False for all non-superusers and
+# non-Company-Admin members — the permissions system is silently broken.
+# This is idempotent: safe to run on every deploy (existing rows are skipped).
+echo "=== Setting Up Roles and Permissions ==="
+python manage.py setup_permissions --create-roles || {
+    echo "WARNING: setup_permissions failed — role-based access control may not work correctly"
+}
+
 # Test WSGI application
 echo "=== Testing WSGI Application ==="
 python -c "

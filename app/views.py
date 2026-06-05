@@ -691,6 +691,7 @@ def upload_attachment(request):
     """Handle multi-part file upload for reminder attachments.
 
     Server-side validation (not relying on browser-supplied content_type):
+      - Per-user rate limit (20 uploads/min)
       - Extension whitelist
       - 10 MB size limit
       - Magic-byte verification to detect renamed executables / scripts
@@ -699,6 +700,19 @@ def upload_attachment(request):
         user = _get_oauth_user(request)
         if not user:
             return JsonResponse({'ok': False, 'message': 'Authentication required'}, status=401)
+
+        # ── Rate limiting (per user, not per IP) ──────────────────────────────
+        # Mirrors upload_profile_picture which uses the same pattern.
+        # 20 uploads/min per user prevents storage exhaustion attacks.
+        if getattr(settings, 'RATE_LIMIT_ENABLED', True):
+            rl_key = f"rl:attachment_upload:{user.id}"
+            attempts = cache.get(rl_key, 0)
+            if attempts >= 20:
+                return JsonResponse(
+                    {'ok': False, 'message': 'Too many uploads. Please try again later.'},
+                    status=429,
+                )
+            cache.set(rl_key, attempts + 1, 60)
 
         if 'file' not in request.FILES:
             return JsonResponse({'ok': False, 'message': 'No file uploaded'}, status=400)
@@ -1352,29 +1366,60 @@ def google_auth_callback(request):
         logger.error(f"Google Callback Error: {str(e)}")
         return JsonResponse({'ok': False, 'message': 'Authentication failed during Google handshake'}, status=500)
 def serve_protected_media(request, path):
-    """Serve media files only to authenticated users (profile pics, attachments).
+    """Serve media files only to authenticated users — with company scoping.
 
-    Two backends are supported:
+    Security model:
+      1. Authentication — request must carry a valid Bearer / session token.
+      2. Company scoping (IDOR prevention) — the file must belong to the same
+         company as the requesting user, or the user must be a superuser.
+         Without this check, any authenticated user from any company could
+         access another company's profile pictures or attachments simply by
+         knowing (or guessing) the path.
 
-    GCS mode (GCS_BUCKET_NAME is set in env):
-        Files live in Google Cloud Storage, not on local disk.
-        We generate a short-lived signed URL and redirect the client to it.
-        The signed URL expires in GS_EXPIRATION (default 30 min) so the
-        file is not permanently public — each access requires a fresh auth check.
+    Path-based ownership resolution:
+      - profile_pics/* → look up User by profile_picture field, compare company
+      - reminder_attachments/* → look up ReminderAttachment by file field, compare company
+      - anything else → deny unless superuser
 
-    Local filesystem mode (development):
-        Files live under MEDIA_ROOT; we stream them directly as before.
-
-    Previously, GCS mode always returned 404 because the code did:
-        file_path = os.path.join('', 'profile_pics/photo.jpg')   →  relative path
-        os.path.exists('profile_pics/photo.jpg')                  →  False (file is in GCS)
+    Two storage backends:
+      GCS  — generate a v4 signed URL (30-min TTL) and redirect.
+      Local — stream the file directly (development only).
     """
     from django.http import FileResponse, Http404
+    from .models import ReminderAttachment
 
-    # ── Auth check ────────────────────────────────────────────────────────────
-    user = _get_oauth_user(request)
-    if not user and not request.user.is_authenticated:
+    # ── 1. Authentication ─────────────────────────────────────────────────────
+    req_user = _get_oauth_user(request)
+    if not req_user and not request.user.is_authenticated:
         return HttpResponseForbidden("Authentication required to view media.")
+    if not req_user:
+        req_user = request.user
+
+    # ── 2. Company scoping (IDOR check) ──────────────────────────────────────
+    # Superusers bypass the tenant check.
+    if not req_user.is_superuser:
+        req_company = getattr(req_user, 'company', None)
+
+        if path.startswith('profile_pics/'):
+            # Match against User.profile_picture upload path
+            UserModel = get_user_model()
+            owner = UserModel.objects.filter(profile_picture=path).first()
+            if owner is None:
+                raise Http404("Media file not found.")
+            file_company = getattr(owner, 'company', None)
+            if file_company is None or file_company != req_company:
+                return HttpResponseForbidden("You do not have permission to access this file.")
+
+        elif path.startswith('reminder_attachments/'):
+            attachment = ReminderAttachment.objects.filter(file=path).first()
+            if attachment is None:
+                raise Http404("Media file not found.")
+            if attachment.company != req_company:
+                return HttpResponseForbidden("You do not have permission to access this file.")
+
+        else:
+            # Unknown path prefix — deny for non-superusers
+            return HttpResponseForbidden("You do not have permission to access this file.")
 
     gcs_bucket = os.environ.get('GCS_BUCKET_NAME', '')
 
@@ -1384,9 +1429,9 @@ def serve_protected_media(request, path):
             from google.cloud import storage as gcs
             from datetime import timedelta
 
-            client = gcs.Client()
-            bucket = client.bucket(gcs_bucket)
-            blob   = bucket.blob(path)
+            client    = gcs.Client()
+            bucket    = client.bucket(gcs_bucket)
+            blob      = bucket.blob(path)
 
             if not blob.exists():
                 raise Http404("Media file not found.")
