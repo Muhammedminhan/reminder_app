@@ -28,6 +28,7 @@ class Command(BaseCommand):
                 completed=False,
                 active=True,
                 is_deleted=False,
+                send=False,           # ← exclude reminders already emailed out
                 reminder_start_date__lte=next_24h,
             ).order_by('reminder_start_date')
 

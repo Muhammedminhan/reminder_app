@@ -977,21 +977,37 @@ def reset_password(request):
         
         signer = TimestampSigner()
         try:
-            # Token valid for 1 hour
+            # Token valid for 1 hour (max_age in seconds)
             email = signer.unsign(token, max_age=3600)
         except SignatureExpired:
             return JsonResponse({'ok': False, 'message': 'Token has expired'}, status=400)
         except BadSignature:
             return JsonResponse({'ok': False, 'message': 'Invalid token'}, status=400)
-            
+
+        # ── One-time use: reject the token if it was already consumed ─────────
+        # We store a SHA-256 hash of the raw token (not the token itself) so the
+        # cache entry reveals nothing if the cache backend is ever inspected.
+        import hashlib
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
+        used_key = f"pw_reset_used:{token_hash}"
+
+        if cache.get(used_key):
+            return JsonResponse(
+                {'ok': False, 'message': 'This reset link has already been used. Please request a new one.'},
+                status=400,
+            )
+
         User = get_user_model()
         user = User.objects.filter(email__iexact=email).first()
         if not user:
             return JsonResponse({'ok': False, 'message': 'User not found'}, status=404)
-            
+
         user.set_password(new_password)
         user.save()
-        
+
+        # Mark token as consumed for the remainder of its 1-hour lifetime
+        cache.set(used_key, True, timeout=3600)
+
         logger.info(f"PASSWORD RESET SUCCESS: User={user.username}")
         return JsonResponse({'ok': True, 'message': 'Password has been reset successfully'})
     except json.JSONDecodeError:
@@ -1220,20 +1236,62 @@ def google_auth_callback(request):
         logger.error(f"Google Callback Error: {str(e)}")
         return JsonResponse({'ok': False, 'message': 'Authentication failed during Google handshake'}, status=500)
 def serve_protected_media(request, path):
+    """Serve media files only to authenticated users (profile pics, attachments).
+
+    Two backends are supported:
+
+    GCS mode (GCS_BUCKET_NAME is set in env):
+        Files live in Google Cloud Storage, not on local disk.
+        We generate a short-lived signed URL and redirect the client to it.
+        The signed URL expires in GS_EXPIRATION (default 30 min) so the
+        file is not permanently public — each access requires a fresh auth check.
+
+    Local filesystem mode (development):
+        Files live under MEDIA_ROOT; we stream them directly as before.
+
+    Previously, GCS mode always returned 404 because the code did:
+        file_path = os.path.join('', 'profile_pics/photo.jpg')   →  relative path
+        os.path.exists('profile_pics/photo.jpg')                  →  False (file is in GCS)
     """
-    Serve media files only to authenticated users.
-    Ensures that profile pictures and other uploads are PRIVATE.
-    """
+    from django.http import FileResponse, Http404
+
+    # ── Auth check ────────────────────────────────────────────────────────────
     user = _get_oauth_user(request)
     if not user and not request.user.is_authenticated:
         return HttpResponseForbidden("Authentication required to view media.")
 
-    import os
-    from django.conf import settings
-    from django.http import FileResponse, Http404
-    
+    gcs_bucket = os.environ.get('GCS_BUCKET_NAME', '')
+
+    # ── GCS mode ──────────────────────────────────────────────────────────────
+    if gcs_bucket:
+        try:
+            from google.cloud import storage as gcs
+            from datetime import timedelta
+
+            client = gcs.Client()
+            bucket = client.bucket(gcs_bucket)
+            blob   = bucket.blob(path)
+
+            if not blob.exists():
+                raise Http404("Media file not found.")
+
+            expiration = getattr(settings, 'GS_EXPIRATION', timedelta(minutes=30))
+            signed_url = blob.generate_signed_url(
+                expiration=expiration,
+                method='GET',
+                version='v4',
+            )
+            return redirect(signed_url)
+
+        except Http404:
+            raise
+        except Exception as exc:
+            logger.error(f"GCS signed URL generation failed for '{path}': {exc}")
+            return HttpResponseServerError("Media file temporarily unavailable.")
+
+    # ── Local filesystem mode (dev) ───────────────────────────────────────────
     file_path = os.path.join(settings.MEDIA_ROOT, path)
     if not os.path.exists(file_path):
         raise Http404("Media file not found.")
-        
+
     return FileResponse(open(file_path, 'rb'))
