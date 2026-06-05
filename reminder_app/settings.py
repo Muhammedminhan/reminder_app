@@ -262,10 +262,16 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Graphene (GraphQL) settings
 GRAPHENE = {
     'SCHEMA': 'app.schema.schema',
-    'MIDDLEWARE': [],
-    'GRAPHIQL': DEBUG,  # only enable GraphiQL in debug/dev
+    # DisableIntrospectionMiddleware blocks __schema / __type queries in
+    # production.  graphene-django 3.x has no built-in introspection flag —
+    # the GRAPHQL_INTROSPECTION setting that was previously here had no effect.
+    'MIDDLEWARE': (
+        []
+        if DEBUG
+        else ['app.graphql_middleware.DisableIntrospectionMiddleware']
+    ),
+    'GRAPHIQL': DEBUG,  # browser IDE only in dev
 }
-GRAPHQL_INTROSPECTION = DEBUG  # only allow introspection in debug/dev
 
 # CORS settings for frontend development and production
 CORS_ALLOW_ALL_ORIGINS = False
