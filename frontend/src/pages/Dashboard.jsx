@@ -140,6 +140,7 @@ const INITIAL_QUERY = gql`
         username
       }
     }
+    slackConfigured
     jiraIntegration {
       baseUrl
       email
@@ -1112,6 +1113,75 @@ export default function Dashboard() {
                                 )}
 
                                 {settingsTab === 'Integration' && (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+
+                                    {/* ── Slack Integration Card ── */}
+                                    <div className="glass-card integration-section animate-fade">
+                                        <div className="section-header">
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                                <div className="header-icon" style={{ display:'flex', alignItems:'center', justifyContent:'center' }}>
+                                                    {/* Slack logo mark */}
+                                                    <svg width="20" height="20" viewBox="0 0 54 54" fill="none">
+                                                        <path d="M19.712 33.316a3.93 3.93 0 0 1-3.925 3.925 3.93 3.93 0 0 1-3.924-3.925 3.93 3.93 0 0 1 3.924-3.924h3.925v3.924z" fill="#E01E5A"/>
+                                                        <path d="M21.67 33.316a3.93 3.93 0 0 1 3.924-3.924 3.93 3.93 0 0 1 3.925 3.924v9.812a3.93 3.93 0 0 1-3.925 3.924 3.93 3.93 0 0 1-3.924-3.924v-9.812z" fill="#E01E5A"/>
+                                                        <path d="M25.594 19.712a3.93 3.93 0 0 1-3.924-3.925 3.93 3.93 0 0 1 3.924-3.924 3.93 3.93 0 0 1 3.925 3.924v3.925h-3.925z" fill="#36C5F0"/>
+                                                        <path d="M25.594 21.67a3.93 3.93 0 0 1 3.925 3.924 3.93 3.93 0 0 1-3.925 3.924H15.782a3.93 3.93 0 0 1-3.924-3.924 3.93 3.93 0 0 1 3.924-3.924h9.812z" fill="#36C5F0"/>
+                                                        <path d="M39.288 25.594a3.93 3.93 0 0 1 3.924 3.924 3.93 3.93 0 0 1-3.924 3.924 3.93 3.93 0 0 1-3.924-3.924v-3.924h3.924z" fill="#2EB67D"/>
+                                                        <path d="M37.33 25.594a3.93 3.93 0 0 1-3.924-3.924 3.93 3.93 0 0 1 3.924-3.924h9.812a3.93 3.93 0 0 1 3.924 3.924 3.93 3.93 0 0 1-3.924 3.924H37.33z" fill="#2EB67D"/>
+                                                        <path d="M33.406 39.288a3.93 3.93 0 0 1 3.924 3.924 3.93 3.93 0 0 1-3.924 3.924 3.93 3.93 0 0 1-3.924-3.924V35.364h3.924z" fill="#ECB22E"/>
+                                                        <path d="M33.406 37.33a3.93 3.93 0 0 1-3.924-3.924 3.93 3.93 0 0 1 3.924-3.925v.001h.001v-.001a3.93 3.93 0 0 1 3.924 3.924 3.93 3.93 0 0 1-3.924 3.924h-.001z" fill="#ECB22E"/>
+                                                        <path d="M33.406 21.67V11.858a3.93 3.93 0 0 0-3.924-3.924 3.93 3.93 0 0 0-3.924 3.924 3.93 3.93 0 0 0 3.924 3.924h3.924v5.888z" fill="#ECB22E" opacity="0"/>
+                                                    </svg>
+                                                </div>
+                                                <div>
+                                                    <h3>Slack Notifications</h3>
+                                                    <p className="text-dim">Send reminder alerts to Slack channels and teammates.</p>
+                                                </div>
+                                            </div>
+                                            <div className={`status-badge ${data?.slackConfigured ? 'active' : 'inactive'}`}>
+                                                {data?.slackConfigured ? 'Connected' : 'Not Connected'}
+                                            </div>
+                                        </div>
+
+                                        {data?.slackConfigured ? (
+                                            <div style={{ padding: '24px 32px' }}>
+                                                <div style={{ display:'flex', alignItems:'center', gap:'10px', padding:'14px 18px', background:'rgba(0,171,228,0.06)', border:'1px solid rgba(0,171,228,0.18)', borderRadius:'12px', marginBottom:'16px' }}>
+                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00ABE4" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>
+                                                    <span style={{ fontSize:'13.5px', color:'#0d1f2d', fontWeight:'500' }}>Slack Bot Token is configured. Channel and user notifications are active.</span>
+                                                </div>
+                                                <p style={{ fontSize:'13px', color:'#6b8099', lineHeight:'1.6' }}>
+                                                    To change the token, update the <code style={{ background:'#f4f8fc', padding:'2px 6px', borderRadius:'4px', color:'#00ABE4' }}>SLACK_BOT_TOKEN</code> environment variable on your server and redeploy.
+                                                </p>
+                                            </div>
+                                        ) : (
+                                            <div style={{ padding: '24px 32px' }}>
+                                                <div style={{ display:'flex', alignItems:'flex-start', gap:'10px', padding:'14px 18px', background:'rgba(251,191,36,0.08)', border:'1px solid rgba(251,191,36,0.25)', borderRadius:'12px', marginBottom:'20px' }}>
+                                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" style={{marginTop:'2px', flexShrink:0}}><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                                                    <span style={{ fontSize:'13px', color:'#92400e' }}>Slack is not connected. Follow the steps below to enable notifications.</span>
+                                                </div>
+
+                                                <div style={{ display:'flex', flexDirection:'column', gap:'16px' }}>
+                                                    {[
+                                                        { step:'1', title:'Create a Slack App', desc: <>Go to <a href="https://api.slack.com/apps" target="_blank" rel="noopener noreferrer" style={{color:'#00ABE4'}}>api.slack.com/apps</a> → <strong>Create New App</strong> → <strong>From scratch</strong>. Name it "NotifyHub" and pick your workspace.</> },
+                                                        { step:'2', title:'Add Bot Scopes', desc: <>Under <strong>OAuth & Permissions → Scopes → Bot Token Scopes</strong>, add: <code style={{background:'#f4f8fc',padding:'2px 6px',borderRadius:'4px',color:'#00ABE4',fontSize:'12px'}}>chat:write</code> <code style={{background:'#f4f8fc',padding:'2px 6px',borderRadius:'4px',color:'#00ABE4',fontSize:'12px'}}>channels:read</code> <code style={{background:'#f4f8fc',padding:'2px 6px',borderRadius:'4px',color:'#00ABE4',fontSize:'12px'}}>users:read</code> <code style={{background:'#f4f8fc',padding:'2px 6px',borderRadius:'4px',color:'#00ABE4',fontSize:'12px'}}>users:read.email</code> <code style={{background:'#f4f8fc',padding:'2px 6px',borderRadius:'4px',color:'#00ABE4',fontSize:'12px'}}>im:write</code></> },
+                                                        { step:'3', title:'Install to Workspace', desc: <>Click <strong>Install to Workspace</strong> and authorise. Copy the <strong>Bot User OAuth Token</strong> (starts with <code style={{background:'#f4f8fc',padding:'2px 6px',borderRadius:'4px',color:'#00ABE4',fontSize:'12px'}}>xoxb-</code>).</> },
+                                                        { step:'4', title:'Invite Bot to Channels', desc: <>In Slack, go to each channel you want NotifyHub to post in and type <code style={{background:'#f4f8fc',padding:'2px 6px',borderRadius:'4px',color:'#00ABE4',fontSize:'12px'}}>/invite @NotifyHub</code>.</> },
+                                                        { step:'5', title:'Set Environment Variable', desc: <>Add <code style={{background:'#f4f8fc',padding:'2px 6px',borderRadius:'4px',color:'#00ABE4',fontSize:'12px'}}>SLACK_BOT_TOKEN=xoxb-your-token</code> to your Cloud Run service environment variables (or <code>.env</code> for local dev), then redeploy.</> },
+                                                    ].map(({ step, title, desc }) => (
+                                                        <div key={step} style={{ display:'flex', gap:'14px', alignItems:'flex-start' }}>
+                                                            <div style={{ width:'28px', height:'28px', borderRadius:'50%', background:'rgba(0,171,228,0.12)', border:'1.5px solid rgba(0,171,228,0.3)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, fontSize:'12px', fontWeight:'700', color:'#00ABE4' }}>{step}</div>
+                                                            <div>
+                                                                <p style={{ fontSize:'13.5px', fontWeight:'600', color:'#0d1f2d', marginBottom:'3px' }}>{title}</p>
+                                                                <p style={{ fontSize:'13px', color:'#6b8099', lineHeight:'1.6', margin:0 }}>{desc}</p>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* ── Jira Integration Card ── */}
                                     <div className="glass-card integration-section animate-fade">
                                         <div className="section-header">
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -1188,6 +1258,7 @@ export default function Dashboard() {
                                             </div>
                                         </form>
                                     </div>
+                                    </div> /* end Integration flex wrapper */
                                 )}
 
                                 {settingsTab === 'Security' && (

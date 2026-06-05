@@ -83,6 +83,7 @@ const MultiSelectDropdown = ({ options, selectedValues, onChange, placeholder })
 
 const GET_FORM_OPTIONS = gql`
   query GetFormOptions {
+    slackConfigured
     slackChannels {
       id
       name
@@ -392,26 +393,49 @@ export default function CreateReminderModal({ isOpen, onClose, onSuccess }) {
                         <Send size={14} /> Notifications
                     </div>
 
-                    <div className="form-row" style={{ marginBottom: 0 }}>
-                        <div className="form-group">
-                            <label>Slack Channels</label>
-                            <MultiSelectDropdown
-                                placeholder="Select channels..."
-                                options={(optionsData?.slackChannels || []).map(ch => ({ value: ch.name, label: ch.name }))}
-                                selectedValues={formData.slackChannels ? formData.slackChannels.split(',').filter(Boolean) : []}
-                                onChange={values => setFormData({ ...formData, slackChannels: values.join(',') })}
-                            />
+                    {optionsData?.slackConfigured === false ? (
+                        /* Slack not connected — show banner instead of broken pickers */
+                        <div style={{
+                            display: 'flex', alignItems: 'center', gap: '10px',
+                            padding: '12px 16px',
+                            background: 'rgba(0,171,228,0.06)',
+                            border: '1px solid rgba(0,171,228,0.2)',
+                            borderRadius: '12px',
+                            marginBottom: '4px',
+                        }}>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00ABE4" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                            </svg>
+                            <span style={{ fontSize: '13px', color: '#4d7a96' }}>
+                                Slack is not connected.{' '}
+                                <a href="/settings" style={{ color: '#00ABE4', fontWeight: 600, textDecoration: 'none' }}>
+                                    Connect Slack in Settings → Integration
+                                </a>{' '}
+                                to enable channel and user notifications.
+                            </span>
                         </div>
-                        <div className="form-group">
-                            <label>Slack Users (Teammates)</label>
-                            <MultiSelectDropdown
-                                placeholder="Select teammates..."
-                                options={(optionsData?.users || []).map(u => ({ value: u.id, label: u.firstName || u.lastName ? `${u.firstName} ${u.lastName}` : u.email }))}
-                                selectedValues={formData.slackUserId ? formData.slackUserId.split(',').filter(Boolean) : []}
-                                onChange={values => setFormData({ ...formData, slackUserId: values.join(',') })}
-                            />
+                    ) : (
+                        <div className="form-row" style={{ marginBottom: 0 }}>
+                            <div className="form-group">
+                                <label>Slack Channels</label>
+                                <MultiSelectDropdown
+                                    placeholder="Select channels..."
+                                    options={(optionsData?.slackChannels || []).map(ch => ({ value: ch.name, label: ch.name }))}
+                                    selectedValues={formData.slackChannels ? formData.slackChannels.split(',').filter(Boolean) : []}
+                                    onChange={values => setFormData({ ...formData, slackChannels: values.join(',') })}
+                                />
+                            </div>
+                            <div className="form-group">
+                                <label>Slack Users (Teammates)</label>
+                                <MultiSelectDropdown
+                                    placeholder="Select teammates..."
+                                    options={(optionsData?.users || []).map(u => ({ value: u.id, label: u.firstName || u.lastName ? `${u.firstName} ${u.lastName}` : u.email }))}
+                                    selectedValues={formData.slackUserId ? formData.slackUserId.split(',').filter(Boolean) : []}
+                                    onChange={values => setFormData({ ...formData, slackUserId: values.join(',') })}
+                                />
+                            </div>
                         </div>
-                    </div>
+                    )}
 
                     <div className="form-section-title">
                         <Shield size={14} /> Access & Collaboration
