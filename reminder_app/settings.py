@@ -69,6 +69,7 @@ INSTALLED_APPS = [
     'graphene_django',
     'rest_framework',
     'rest_framework_simplejwt',
+    'rest_framework_simplejwt.token_blacklist',  # required for BLACKLIST_AFTER_ROTATION
     'oauth2_provider',
     # 'django_celery_beat',  # Commented out for Cloud Run compatibility
     # 'django_celery_results',  # Commented out for Cloud Run compatibility

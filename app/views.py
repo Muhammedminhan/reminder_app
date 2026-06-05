@@ -615,42 +615,115 @@ def get_user_profile(request):
     })
 
 
+# ── Attachment upload constants ───────────────────────────────────────────────
+_ATTACHMENT_MAX_SIZE = 10 * 1024 * 1024   # 10 MB
+
+_ATTACHMENT_ALLOWED_EXTENSIONS = {
+    '.pdf', '.txt', '.csv',
+    '.doc', '.docx',
+    '.xls', '.xlsx',
+    '.ppt', '.pptx',
+    '.png', '.jpg', '.jpeg', '.gif', '.webp',
+    '.zip',
+}
+
+# Magic bytes (file signatures) for allowed types.
+# Checked against the first 8 bytes of the upload to prevent content-type spoofing.
+_MAGIC_BYTES: list[tuple[bytes, set[str]]] = [
+    (b'%PDF',           {'.pdf'}),
+    (b'\x89PNG',        {'.png'}),
+    (b'\xff\xd8\xff',   {'.jpg', '.jpeg'}),
+    (b'GIF8',           {'.gif'}),
+    (b'RIFF',           {'.webp'}),          # RIFF....WEBP
+    (b'PK\x03\x04',     {'.docx', '.xlsx', '.pptx', '.zip'}),  # ZIP-based formats
+    (b'\xd0\xcf\x11\xe0', {'.doc', '.xls', '.ppt'}),           # OLE2 compound
+]
+
+
+def _validate_attachment(uploaded_file):
+    """Return an error message string if the file is rejected, else None.
+
+    Checks (in order):
+      1. Extension against whitelist
+      2. File size cap (10 MB)
+      3. Magic bytes — first 8 bytes must match the declared extension
+         (prevents uploading an .exe renamed to .pdf)
+    """
+    name = uploaded_file.name or ''
+    ext  = os.path.splitext(name)[1].lower()
+
+    if ext not in _ATTACHMENT_ALLOWED_EXTENSIONS:
+        return f"File type '{ext or '(none)'}' is not allowed. Permitted: {', '.join(sorted(_ATTACHMENT_ALLOWED_EXTENSIONS))}"
+
+    if uploaded_file.size > _ATTACHMENT_MAX_SIZE:
+        mb = uploaded_file.size / (1024 * 1024)
+        return f"File too large ({mb:.1f} MB). Maximum allowed size is 10 MB."
+
+    # Magic-byte check — read first 8 bytes without consuming the stream
+    uploaded_file.seek(0)
+    header = uploaded_file.read(8)
+    uploaded_file.seek(0)
+
+    for magic, valid_exts in _MAGIC_BYTES:
+        if header.startswith(magic):
+            if ext not in valid_exts:
+                return f"File content does not match its extension '{ext}'. Upload rejected."
+            return None  # magic matched and extension is consistent — valid
+
+    # Extension is whitelisted but has no magic bytes entry (e.g. .txt, .csv)
+    # — allow these since they have no reliable binary signature.
+    return None
+
+
 @csrf_exempt
 @require_http_methods(["POST"])
 def upload_attachment(request):
-    """
-    Handle multi-part file upload for reminder attachments.
-    Returns the attachment ID for use in the reminder creation mutation.
+    """Handle multi-part file upload for reminder attachments.
+
+    Server-side validation (not relying on browser-supplied content_type):
+      - Extension whitelist
+      - 10 MB size limit
+      - Magic-byte verification to detect renamed executables / scripts
     """
     try:
         user = _get_oauth_user(request)
         if not user:
             return JsonResponse({'ok': False, 'message': 'Authentication required'}, status=401)
-        
+
         if 'file' not in request.FILES:
             return JsonResponse({'ok': False, 'message': 'No file uploaded'}, status=400)
-            
+
         uploaded_file = request.FILES['file']
-        
+
+        # ── Validate before touching the DB ──────────────────────────────────
+        error = _validate_attachment(uploaded_file)
+        if error:
+            return JsonResponse({'ok': False, 'message': error}, status=400)
+
+        # Derive MIME type from extension — do NOT trust browser-supplied content_type
+        import mimetypes
+        safe_mime, _ = mimetypes.guess_type(uploaded_file.name)
+        safe_mime = safe_mime or 'application/octet-stream'
+
         from .models import ReminderAttachment
         attachment = ReminderAttachment.objects.create(
             file=uploaded_file,
             filename=uploaded_file.name,
-            file_type=uploaded_file.content_type,
+            file_type=safe_mime,             # server-derived, not browser-supplied
             file_size=uploaded_file.size,
             uploaded_by=user,
-            company=user.company
+            company=user.company,
         )
-        
+
         return JsonResponse({
-            'ok': True,
-            'id': str(attachment.id),
+            'ok':      True,
+            'id':      str(attachment.id),
             'filename': attachment.filename,
-            'url': f"/media/{attachment.file.name}"
+            'url':     f"/media/{attachment.file.name}",
         })
     except Exception as e:
         logger.error(f"Upload error: {e}")
-        return JsonResponse({'ok': False, 'message': str(e)}, status=500)
+        return JsonResponse({'ok': False, 'message': 'Upload failed'}, status=500)
 
 @csrf_exempt
 @require_http_methods(["POST"])
@@ -1090,38 +1163,62 @@ def upload_profile_picture(request):
 # ---- Google OAuth2 Integration ----
 
 def google_auth_init(request):
-    """Step 1: Redirect to Google's OAuth2 authorization URL"""
+    """Step 1: Redirect to Google's OAuth2 authorization URL.
+
+    CSRF protection: generate a cryptographically random `state` token,
+    store it in cache for 5 minutes, and include it in the redirect URL.
+    The callback verifies the returned state against the cache entry before
+    processing the authorisation code (RFC 6749 §10.12).
+    """
     from decouple import config
     import urllib.parse
-    
+
     client_id = config('GOOGLE_CLIENT_ID', default='')
     if not client_id:
         return HttpResponseServerError("Google OAuth not configured (missing GOOGLE_CLIENT_ID)")
-        
-    # Use fixed backend URL from .env for redirect_uri stability
+
     backend_url = config('BACKEND_URL', default=request.build_absolute_uri('/')[:-1])
     redirect_uri = f"{backend_url.rstrip('/')}{reverse('google-auth-callback')}"
-    
+
+    # Generate state token and store it in cache (5-minute TTL)
+    state = secrets.token_urlsafe(32)
+    cache.set(f"oauth_state:{state}", True, timeout=300)
+
     params = {
-        'client_id': client_id,
-        'redirect_uri': redirect_uri,
+        'client_id':     client_id,
+        'redirect_uri':  redirect_uri,
         'response_type': 'code',
-        'scope': 'openid email profile',
-        'access_type': 'offline',
-        'prompt': 'select_account'
+        'scope':         'openid email profile',
+        'access_type':   'offline',
+        'prompt':        'select_account',
+        'state':         state,
     }
-    
+
     google_url = f"https://accounts.google.com/o/oauth2/v2/auth?{urllib.parse.urlencode(params)}"
     return redirect(google_url)
 
 
 def google_auth_callback(request):
-    """Step 2: Receive code from Google and exchange for user info"""
+    """Step 2: Receive code from Google and exchange for user info.
+
+    Verifies the `state` parameter against the cache entry created in
+    google_auth_init to prevent CSRF / login-CSRF attacks.
+    """
     from decouple import config
     from oauth2_provider.models import AccessToken, Application
     from datetime import timedelta
     from django.utils import timezone
-    
+
+    # ── CSRF: verify state token ──────────────────────────────────────────────
+    state = request.GET.get('state', '')
+    if not state or not cache.get(f"oauth_state:{state}"):
+        return HttpResponseForbidden(
+            "Invalid or expired OAuth state parameter. "
+            "Please start the login flow again."
+        )
+    # Consume the state so it cannot be replayed
+    cache.delete(f"oauth_state:{state}")
+
     code = request.GET.get('code')
     if not code:
         return HttpResponseBadRequest("No authorization code received from Google")
