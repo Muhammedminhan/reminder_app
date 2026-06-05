@@ -203,7 +203,7 @@ class CompanyAdminUserCreationTests(TestCase):
             'email': 'nu2@example.com',
             'password1': 'Str0ngPass!!',
             'password2': 'Str0ngPass!!',
-            'department': str(self.dept.id),
+            'departments': str(self.dept.id),  # M2M field — plural, not 'department'
             'is_active': 'on',
             'company': str(self.company.id),
         }
@@ -221,7 +221,7 @@ class CompanyAdminUserCreationTests(TestCase):
         self.assertTrue(u.is_staff, 'New user should have is_staff True by default for company admin creation')
         self.assertFalse(u.is_superuser)
         self.assertEqual(u.company, self.company)
-        self.assertEqual(u.department, self.dept)
+        self.assertIn(self.dept, u.departments.all())  # departments is M2M, not a direct FK
 
     def test_superuser_still_can_create_without_department(self):
         superuser = User.objects.create_superuser(username='rootx', email='rootx@example.com', password='rootpass', company=self.company)
@@ -317,11 +317,17 @@ class RecurringIntervalSchedulingTests(TestCase):
 
     @patch('app.utils._send_reminder_email', return_value=True)
     def test_six_months_clone_date(self, mock_send):
+        # '6 months' is not a valid interval_type (not in TASK_INTERVAL_CHOICES).
+        # The equivalent is interval_type='custom' with custom_repeat_every=6,
+        # custom_repeat_unit='month' — which _schedule_next_reminder() handles
+        # via the 'custom' / 'month' branch.
         base_start = timezone.make_aware(datetime(2025, 2, 15, 9, 30, 0))
         r = Reminder.objects.create(
             title='Semi-Annual Task',
             receiver_email='s@example.com',
-            interval_type='6 months',
+            interval_type='custom',
+            custom_repeat_every=6,
+            custom_repeat_unit='month',
             reminder_start_date=base_start,
             company=self.company,
             created_by=self.user,
@@ -332,7 +338,9 @@ class RecurringIntervalSchedulingTests(TestCase):
         clone = Reminder.objects.exclude(id=r.id).get()
         expected = base_start + relativedelta(months=+6)
         self.assertEqual(clone.reminder_start_date, expected)
-        self.assertEqual(clone.interval_type, '6 months')
+        self.assertEqual(clone.interval_type, 'custom')
+        self.assertEqual(clone.custom_repeat_every, 6)
+        self.assertEqual(clone.custom_repeat_unit, 'month')
 
     @patch('app.utils._send_reminder_email', return_value=True)
     def test_yearly_clone_date(self, mock_send):
