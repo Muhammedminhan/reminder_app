@@ -226,7 +226,7 @@ def send_dns_instructions_email(to_email, domain, sendgrid_records, gcp_records)
         "Content-Type": "application/json"
     }
 
-    from_email = config('DEFAULT_FROM_EMAIL', default='tech-admin@ferryswiss.com')
+    from_email = config('DEFAULT_FROM_EMAIL', default='notifications@notifyhub.app')
 
     logger.info(f"Using sender email: {from_email}")
 
@@ -417,7 +417,7 @@ def send_site_verification_email(to_email, domain, token):
         "Authorization": f"Bearer {SENDGRID_API_KEY}",
         "Content-Type": "application/json"
     }
-    from_email = config('DEFAULT_FROM_EMAIL', default='tech-admin@ferryswiss.com')
+    from_email = config('DEFAULT_FROM_EMAIL', default='notifications@notifyhub.app')
 
     txt_name = domain.strip('.')
     txt_value = f"google-site-verification={token}"
@@ -591,7 +591,7 @@ def send_mapping_ready_email(to_email, domain):
 def _send_html_email(to_email, subject, html):
     url = "https://api.sendgrid.com/v3/mail/send"
     headers = {"Authorization": f"Bearer {SENDGRID_API_KEY}", "Content-Type": "application/json"}
-    from_email = config('DEFAULT_FROM_EMAIL', default='tech-admin@ferryswiss.com')
+    from_email = config('DEFAULT_FROM_EMAIL', default='notifications@notifyhub.app')
     data = {
         "personalizations": [{"to": [{"email": to_email}]}],
         "from": {"email": from_email, "name": "NotifyHub Team"},
@@ -839,6 +839,23 @@ def process_scheduled_tasks():
             task.save()
             logger.error(f"Error processing task: {e}")
 
+    # ── Daily cleanup of old sent reminders ───────────────────────────────────
+    # Soft-delete sent reminder rows older than REMINDER_CLEANUP_DAYS so the
+    # table doesn't grow unboundedly from recurring reminders.
+    try:
+        from django.conf import settings as _s
+        from django.db.models import Q
+        cutoff = now - timedelta(days=getattr(_s, 'REMINDER_CLEANUP_DAYS', 90))
+        deleted = Reminder.objects.filter(
+            send=True,
+            is_deleted=False,
+            reminder_start_date__lt=cutoff,
+        ).update(is_deleted=True)
+        if deleted:
+            logger.info(f"cleanup: soft-deleted {deleted} old sent reminder row(s) older than cutoff {cutoff.date()}")
+    except Exception as e:
+        logger.error(f"cleanup_sent_reminders inline error: {e}")
+
 
 def process_reminder_tasks():
     """Process due reminders with an atomic claim step to prevent double-sends.
@@ -997,7 +1014,7 @@ def _send_reminder_email(reminder):
             branded_from = f"no-reply@notifyhub.{company_domain}"
         from_name = _ensure_sender_name(reminder)  # use enforced default if needed
         # Fallback default sender (must be verified in SendGrid)
-        default_from = config('DEFAULT_FROM_EMAIL', default='no-reply@ferryswiss.com')
+        default_from = config('DEFAULT_FROM_EMAIL', default='notifications@notifyhub.app')
         # Decide which from to use first
         from_email_addr = branded_from or default_from
         logger.info(

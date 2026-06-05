@@ -250,6 +250,13 @@ class SlackChannelType(graphene.ObjectType):
     name = graphene.String()
 
 
+class SlackStatusType(graphene.ObjectType):
+    """Returned alongside channel lists so the frontend knows whether
+    Slack is actually connected and can show an appropriate UI state."""
+    configured = graphene.Boolean()
+    channels = graphene.List(SlackChannelType)
+
+
 class Query(graphene.ObjectType):
     me = graphene.Field(UserType)
     users = graphene.List(UserType)
@@ -276,6 +283,7 @@ class Query(graphene.ObjectType):
     system_performance = graphene.List(PerformancePoint, period=graphene.String())
     dashboard_stats = graphene.Field(DashboardStatsType)
     slack_channels = graphene.List(SlackChannelType)
+    slack_configured = graphene.Boolean()  # true only when SLACK_BOT_TOKEN is set
     recent_activities = graphene.List(ActivityType)
     
     # New Queries
@@ -328,39 +336,54 @@ class Query(graphene.ObjectType):
         return activities
 
     def resolve_slack_channels(self, info):
-        # Auth guard — same pattern as every other resolver
+        """Return the list of Slack channels available to the authed user.
+
+        Returns an empty list when SLACK_BOT_TOKEN is not configured instead
+        of returning fake placeholder channels.  Returning fake channels caused
+        users to select a channel, save a reminder, and receive no notification
+        — a silent failure.  The frontend should check for an empty list and
+        show a "Slack not connected" message rather than a channel picker.
+        """
         user = get_authenticated_user(info)
         if not user:
             return []
 
-        from decouple import config
-        token = config('SLACK_BOT_TOKEN', default='')
-        channels = []
-        if token:
-            try:
-                import requests
-                resp = requests.get(
-                    'https://slack.com/api/conversations.list',
-                    headers={'Authorization': f'Bearer {token}'},
-                    params={'exclude_archived': 'true'},
-                    timeout=6,
-                )
-                data = resp.json()
-                if data.get('ok'):
-                    for ch in data.get('channels', []):
-                        channels.append(SlackChannelType(id=ch['id'], name=ch['name']))
-            except Exception:
-                pass
+        from decouple import config as _config
+        token = _config('SLACK_BOT_TOKEN', default='')
+        if not token:
+            # No token → Slack is not connected; return empty so the frontend
+            # can display "Slack not connected" instead of fake channels.
+            return []
 
-        # Fallback for development/demo when no Slack token is configured
-        if not channels:
-            channels = [
-                SlackChannelType(id='#general',     name='general'),
-                SlackChannelType(id='#random',      name='random'),
-                SlackChannelType(id='#engineering', name='engineering'),
-                SlackChannelType(id='#marketing',   name='marketing'),
-            ]
+        channels = []
+        try:
+            resp = requests.get(
+                'https://slack.com/api/conversations.list',
+                headers={'Authorization': f'Bearer {token}'},
+                params={'exclude_archived': 'true', 'limit': 200},
+                timeout=6,
+            )
+            data = resp.json()
+            if data.get('ok'):
+                for ch in data.get('channels', []):
+                    channels.append(SlackChannelType(id=ch['id'], name=ch['name']))
+            else:
+                logger.warning(f"Slack conversations.list error: {data.get('error')}")
+        except Exception as exc:
+            logger.warning(f"Slack API request failed: {exc}")
+
         return channels
+
+    def resolve_slack_configured(self, info):
+        """Returns True only when SLACK_BOT_TOKEN is set in the environment.
+        The frontend uses this to decide whether to show the channel picker or
+        a 'Slack not connected — contact your admin' message.
+        """
+        user = get_authenticated_user(info)
+        if not user:
+            return False
+        from decouple import config as _config
+        return bool(_config('SLACK_BOT_TOKEN', default=''))
 
     def resolve_me(self, info):
         # Force a refresh from the database to ensure all fields are populated

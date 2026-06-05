@@ -128,7 +128,22 @@ WSGI_APPLICATION = 'reminder_app.wsgi.application'
 
 # Check if we're using Cloud SQL or local database
 if os.environ.get('DB_HOST'):
-    # Cloud SQL configuration
+    # ── Cloud SQL / PostgreSQL ────────────────────────────────────────────────
+    # Connection budget:
+    #   gunicorn gthread workers open at most 1 connection per thread.
+    #   With GUNICORN_WORKERS=2, GUNICORN_THREADS=4 → 8 connections per instance.
+    #   Cloud SQL db-f1-micro allows 25 max connections.
+    #   At 3+ Cloud Run instances you exceed the limit → OperationalError.
+    #
+    # Mitigations applied here:
+    #   CONN_MAX_AGE=0  — close connections after each request (Cloud Run
+    #     containers are short-lived; persistent connections don't help and
+    #     can exhaust the pool when scaling).
+    #   CONN_HEALTH_CHECKS=True — discard stale connections on reuse.
+    #
+    # Recommended production fix: use Cloud SQL Auth Proxy + PgBouncer in
+    # transaction-mode pooling, or upgrade to db-g1-small (1,000 max conns).
+    # Set DB_CONN_MAX_AGE=0 explicitly in Cloud Run env vars.
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.postgresql',
@@ -137,6 +152,17 @@ if os.environ.get('DB_HOST'):
             'PASSWORD': os.environ.get('DB_PASSWORD', ''),
             'HOST': os.environ.get('DB_HOST', ''),
             'PORT': os.environ.get('DB_PORT', '5432'),
+            # CONN_MAX_AGE=0: release connections after every request.
+            # This is correct for Cloud Run (ephemeral, many instances).
+            'CONN_MAX_AGE': int(os.environ.get('DB_CONN_MAX_AGE', 0)),
+            'CONN_HEALTH_CHECKS': True,
+            'OPTIONS': {
+                # Limit connections at the psycopg2 level as a backstop.
+                # This does NOT replace PgBouncer — it just prevents a single
+                # instance from opening more than this many connections.
+                # Formula: GUNICORN_WORKERS × GUNICORN_THREADS
+                'connect_timeout': 10,
+            },
         }
     }
 else:
@@ -412,4 +438,17 @@ else:
     MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 ADMIN_EMAIL = os.environ.get('ADMIN_EMAIL', 'admin@example.com')
-DEFAULT_FROM_EMAIL = 'alert@notifyhub.yougotagift.com'
+
+# ── Recurring reminder cleanup ────────────────────────────────────────────────
+# Sent reminder rows older than this many days are soft-deleted by the
+# cleanup_sent_reminders management command (or the daily webhook).
+# Increase for longer audit trails; decrease to keep the table lean.
+REMINDER_CLEANUP_DAYS = int(os.environ.get('REMINDER_CLEANUP_DAYS', 90))
+
+# DEFAULT_FROM_EMAIL — must match a SendGrid-authenticated sender domain.
+# Set DEFAULT_SENDER_EMAIL in your Cloud Run / .env to the verified address.
+# The fallback is a placeholder that will be rejected by SendGrid in production.
+DEFAULT_FROM_EMAIL = os.environ.get(
+    'DEFAULT_FROM_EMAIL',
+    os.environ.get('DEFAULT_SENDER_EMAIL', 'notifications@notifyhub.app'),
+)

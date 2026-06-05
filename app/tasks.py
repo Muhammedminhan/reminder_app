@@ -18,59 +18,16 @@ from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
-def send_scheduled_email(reminder_id):
-    from .models import Reminder
-
-    try:
-        reminder = Reminder.objects.get(id=reminder_id)
-
-        if reminder.send == False:
-            sg = sendgrid.SendGridAPIClient(api_key=config('SENDGRID_API_KEY'))
-
-            if reminder.sender_email:
-                SENDER_EMAIL = reminder.sender_email
-            else:
-                from .constants import SENDER_EMAIL as DEFAULT_SENDER_EMAIL
-                SENDER_EMAIL = DEFAULT_SENDER_EMAIL
-
-            from_email = Email(SENDER_EMAIL)
-            email_list = reminder.receiver_email.split(",")
-            for email in email_list:
-                to_email = To(email)
-                subject = reminder.title
-                message = reminder.description
-                content = Content("text/plain", message)
-                mail = Mail(from_email, to_email, subject, content)
-
-                try:
-                    sg.client.mail.send.post(request_body=mail.get())
-                except HTTPError as e:
-                    logger.warning(e.to_dict())
-
-            # Send SMS if phone number is provided
-            if reminder.phone_no:
-                client = Client(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN)
-                sms_message = client.messages.create(
-                    body=message,
-                    from_=settings.TWILIO_PHONE_NUMBER,
-                    to=reminder.phone_no
-                )
-
-                # wtsp_message = client.messages.create(
-                #
-                #     from_="whatsapp:+14155238886",
-                #     body=message,
-                #     to=f"whatsapp:{reminder.phone_no}"
-                # )
-
-            reminder.send = True
-            reminder.save()
-            # Removed immediate Slack notification; Slack notices are sent daily at 9 AM for pending reminders.
-            return f"Email and SMS sent successfully."
-    except Reminder.DoesNotExist:
-        return "Reminder does not exist."
-    except Exception as e:
-        return f"An error occurred: {str(e)}"
+# send_scheduled_email() was deleted.
+#
+# It was dead code — never called from anywhere in the codebase.
+# It also contained the old pre-fix race condition (reminder.send = True;
+# reminder.save() in two separate DB round-trips) and used the deprecated
+# ferryswiss.com sender address.
+#
+# All reminder sending is now done exclusively via process_reminder_tasks()
+# in app/utils.py, which uses an atomic UPDATE to claim each reminder before
+# sending, preventing double-sends under concurrent webhook invocations.
 
 
 # @shared_task
