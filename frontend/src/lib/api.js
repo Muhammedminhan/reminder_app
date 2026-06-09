@@ -46,10 +46,12 @@ export const isAuthenticated = () => {
     const token = getAccessToken();
     if (!token) return false;
 
-    try {
-        const parts = token.split('.');
-        if (parts.length !== 3) return false;
+    const parts = token.split('.');
+    // If it's not a JWT (e.g. Django OAuth Toolkit opaque token), just assume it's valid.
+    // Apollo 401 interceptor will handle actual expiration.
+    if (parts.length !== 3) return true;
 
+    try {
         // atob requires standard base64; JWT uses base64url — fix the padding
         const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
         if (!payload.exp) return true; // no exp claim → treat as valid
