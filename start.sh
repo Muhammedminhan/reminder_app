@@ -57,7 +57,8 @@ python -c "import django; print('Django import OK')" || {
 # Test Django settings
 echo "=== Testing Django Settings ==="
 python manage.py check || {
-    echo "WARNING: Django check failed, but continuing..."
+    echo "ERROR: Django system check failed. Aborting startup to prevent a broken deploy."
+    exit 1
 }
 
 # Run migrations
@@ -129,7 +130,10 @@ else:
                 'name': 'NotifyHub Frontend',
                 'client_secret': '',          # PUBLIC client — no secret
                 'client_type': Application.CLIENT_PUBLIC,
-                'authorization_grant_type': Application.GRANT_PASSWORD,
+                # GRANT_AUTHORIZATION_CODE + PKCE is the modern, secure OAuth2 flow.
+                # GRANT_PASSWORD (Resource Owner Password Credentials) is deprecated
+                # in OAuth 2.1 and sends raw credentials to the backend.
+                'authorization_grant_type': Application.GRANT_AUTHORIZATION_CODE,
                 'user': user,
                 'skip_authorization': True,
             }

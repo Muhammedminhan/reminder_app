@@ -8,8 +8,7 @@ from .utils import process_scheduled_tasks, process_reminder_tasks
 from django.utils import timezone
 from .sso import SAMLHelper
 from django.shortcuts import render, redirect, get_object_or_404
-from .models import Reminder, Company, User, CompanySSOSettings
-from .models import Reminder, SendGridDomainAuth
+from .models import Reminder, Company, User, CompanySSOSettings, SendGridDomainAuth
 from django.contrib.auth import get_user_model, authenticate
 from django.conf import settings
 from django.core.cache import cache

@@ -30,6 +30,9 @@ services:
       timeout: 5s
       retries: 5
 
+  # Redis is kept even though Celery has been removed.
+  # It is required for: per-instance rate limiting and MFA challenge tokens
+  # (both break silently without a shared cache on multi-instance Cloud Run).
   redis:
     image: redis:7-alpine
     restart: unless-stopped
@@ -54,8 +57,8 @@ services:
         --timeout 120
         --reload
     volumes:
-      - .:/app
-      - media_files:/app/media
+      - .:/reminder_app
+      - media_files:/reminder_app/media
     ports:
       - "8000:8000"
     depends_on:

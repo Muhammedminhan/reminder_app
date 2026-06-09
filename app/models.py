@@ -386,7 +386,7 @@ class SendGridDomainAuth(models.Model):
         self.domain = d
 
     def save(self, *args, **kwargs):
-        self.clean()  # ensure validation + normalized domain applied prior to normalization logic below
+        self.full_clean()  # runs clean_fields + clean + validate_unique (not just clean)
         from django.conf import settings
         try:
             raw = (self.domain or '').strip().lower()
@@ -456,11 +456,11 @@ class ScheduledTask(models.Model):
 
 # Permission and Role System (Similar to Zoho Payroll)
 class Permission(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     """
     Custom permissions for the system.
     Similar to Zoho Payroll's permission system.
     """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     PERMISSION_CATEGORIES = [
         ('reminders', 'Reminders'),
         ('users', 'Users'),
@@ -488,11 +488,11 @@ class Permission(models.Model):
 
 
 class Role(models.Model):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     """
     Roles that group multiple permissions together.
     Similar to Zoho Payroll's role system.
     """
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=100, help_text="Role name (e.g., 'HR Manager', 'Employee')")
     description = models.TextField(blank=True, null=True, help_text="Role description")
     company = models.ForeignKey(Company, on_delete=models.CASCADE, null=True, blank=True,
