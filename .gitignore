@@ -258,3 +258,15 @@ frontend-examples.js
 frontend_example.html
 setup_production_oauth.py
 
+
+# Root-level one-off scripts and output files (should never be committed)
+test_output.txt
+test_multi_tenant.py
+test_noindex.py
+test_query.py
+test_slack.py
+frontend-examples.js
+setup_production_oauth.py
+diagnose_api.py
+patch_schema.py
+minimal_start.sh

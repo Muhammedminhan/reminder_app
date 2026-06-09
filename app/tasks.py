@@ -22,8 +22,8 @@ logger = logging.getLogger(__name__)
 #
 # It was dead code — never called from anywhere in the codebase.
 # It also contained the old pre-fix race condition (reminder.send = True;
-# reminder.save() in two separate DB round-trips) and used the deprecated
-# ferryswiss.com sender address.
+# reminder.save() in two separate DB round-trips) and used a hardcoded
+# sender address that has since been removed.
 #
 # All reminder sending is now done exclusively via process_reminder_tasks()
 # in app/utils.py, which uses an atomic UPDATE to claim each reminder before
