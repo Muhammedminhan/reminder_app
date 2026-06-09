@@ -1,149 +1,203 @@
-#!/usr/bin/env python3
 """
-Test script to check if models can be loaded and basic operations work
+tests/test_models.py — Django TestCase suite for core model behaviour.
+
+Run with:
+    python manage.py test tests.test_models
 """
-
-import os
-import sys
-import django
-
-# Add the project directory to the Python path
-sys.path.append('/Users/admin/PycharmProjects/reminder_app')
-
-# Set up Django
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'reminder_app.settings')
-django.setup()
-
-from django.contrib.auth.models import User
-from app.models import Reminder, SendGridDomainAuth, Company, Department
+from django.test import TestCase
 from django.core.exceptions import ValidationError
+from django.utils import timezone
 
-def test_model_imports():
-    """Test if models can be imported without errors"""
-    print("=== Testing Model Imports ===")
-    try:
-        from app.models import Reminder, SendGridDomainAuth, Company, Department, User
-        print("✅ All models imported successfully")
-        return True
-    except Exception as e:
-        print(f"❌ Error importing models: {e}")
-        return False
+from app.models import (
+    Reminder,
+    Company,
+    Department,
+    SendGridDomainAuth,
+    Permission,
+    Role,
+)
+from django.contrib.auth import get_user_model
 
-def test_reminder_model():
-    """Test Reminder model basic operations"""
-    print("\n=== Testing Reminder Model ===")
-    try:
-        # Test creating a Reminder instance
-        reminder = Reminder(
-            title="Test Reminder",
-            description="Test description",
-            interval_type="daily"
+User = get_user_model()  # always app.User, never django.contrib.auth.models.User
+
+
+# ── Helpers ────────────────────────────────────────────────────────────────────
+
+def make_company(name='Test Corp'):
+    return Company.objects.create(name=name, email=f'{name.lower().replace(" ", "")}@example.com')
+
+
+def make_user(company, username='testuser', superuser=False):
+    if superuser:
+        return User.objects.create_superuser(
+            username=username, email=f'{username}@example.com',
+            password='Str0ng!Pass', company=company,
         )
-        print("✅ Reminder instance created successfully")
-        
-        # Test the is_active method
-        is_active = reminder.is_active()
-        print(f"✅ is_active() method works: {is_active}")
-        
-        return True
-    except Exception as e:
-        print(f"❌ Error with Reminder model: {e}")
-        return False
+    return User.objects.create_user(
+        username=username, email=f'{username}@example.com',
+        password='Str0ng!Pass', company=company,
+    )
 
-def test_sendgrid_model():
-    """Test SendGridDomainAuth model basic operations"""
-    print("\n=== Testing SendGridDomainAuth Model ===")
-    try:
-        # Test creating a SendGridDomainAuth instance
-        # First, we need a user
-        user, created = User.objects.get_or_create(
-            username='testuser',
-            defaults={'email': 'test@example.com'}
+
+# ── Model import smoke test ────────────────────────────────────────────────────
+
+class ModelImportTest(TestCase):
+    """Verifies all core models import cleanly — catches circular imports early."""
+
+    def test_imports(self):
+        from app.models import (  # noqa: F401
+            Reminder, Company, Department, SendGridDomainAuth,
+            Permission, Role, UserRole, ReminderAttachment, ReminderDelivery,
         )
-        
-        sendgrid_auth = SendGridDomainAuth(
-            user=user,
-            domain="test.example.com",
-            customer_id="test-customer"
+
+
+# ── Company model ──────────────────────────────────────────────────────────────
+
+class CompanyModelTest(TestCase):
+    def test_str(self):
+        c = make_company('Acme')
+        self.assertEqual(str(c), 'Acme')
+
+
+# ── User model ─────────────────────────────────────────────────────────────────
+
+class UserModelTest(TestCase):
+    def setUp(self):
+        self.company = make_company()
+
+    def test_create_user(self):
+        u = make_user(self.company)
+        self.assertEqual(u.company, self.company)
+        self.assertFalse(u.is_superuser)
+
+    def test_superuser_allows_null_company(self):
+        """Superusers are allowed to have company=None (validation only blocks non-superusers)."""
+        su = User.objects.create_superuser(
+            username='root', email='root@example.com', password='Str0ng!Pass',
         )
-        print("✅ SendGridDomainAuth instance created successfully")
-        
-        # Test the __str__ method
-        str_repr = str(sendgrid_auth)
-        print(f"✅ __str__ method works: {str_repr}")
-        
-        return True
-    except Exception as e:
-        print(f"❌ Error with SendGridDomainAuth model: {e}")
-        return False
+        self.assertTrue(su.is_superuser)
 
-def test_utils_imports():
-    """Test if utils functions can be imported"""
-    print("\n=== Testing Utils Imports ===")
-    try:
-        from app.utils import generate_unique_id, filter_company, set_company, remove_company
-        print("✅ Utils functions imported successfully")
-        
-        # Test generate_unique_id
-        unique_id = generate_unique_id()
-        print(f"✅ generate_unique_id works: {unique_id}")
-        
-        return True
-    except Exception as e:
-        print(f"❌ Error importing utils: {e}")
-        return False
+    def test_non_superuser_without_company_fails_clean(self):
+        """User.clean() must reject non-superusers with company=None."""
+        u = User(username='orphan', email='orphan@example.com', company=None, is_superuser=False)
+        u.set_password('Str0ng!Pass')
+        u.pk = 1  # simulate saved object so clean() runs the check
+        with self.assertRaises(ValidationError):
+            u.clean()
 
-def test_admin_imports():
-    """Test if admin classes can be imported"""
-    print("\n=== Testing Admin Imports ===")
-    try:
-        from app.admin import ReminderAdmin, SendGridDomainAuthAdmin
-        print("✅ Admin classes imported successfully")
-        return True
-    except Exception as e:
-        print(f"❌ Error importing admin classes: {e}")
-        return False
 
-def main():
-    """Run all tests"""
-    print("🔍 Model and Admin Test Tool")
-    print("=" * 50)
-    
-    # Test 1: Model imports
-    models_ok = test_model_imports()
-    
-    # Test 2: Reminder model
-    reminder_ok = test_reminder_model()
-    
-    # Test 3: SendGrid model
-    sendgrid_ok = test_sendgrid_model()
-    
-    # Test 4: Utils imports
-    utils_ok = test_utils_imports()
-    
-    # Test 5: Admin imports
-    admin_ok = test_admin_imports()
-    
-    # Summary
-    print("\n" + "=" * 50)
-    print("📊 SUMMARY")
-    print("=" * 50)
-    print(f"Model Imports: {'✅ OK' if models_ok else '❌ FAILED'}")
-    print(f"Reminder Model: {'✅ OK' if reminder_ok else '❌ FAILED'}")
-    print(f"SendGrid Model: {'✅ OK' if sendgrid_ok else '❌ FAILED'}")
-    print(f"Utils Imports: {'✅ OK' if utils_ok else '❌ FAILED'}")
-    print(f"Admin Imports: {'✅ OK' if admin_ok else '❌ FAILED'}")
-    
-    if not models_ok:
-        print("\n🔧 FIX: Check model imports and dependencies")
-    elif not reminder_ok:
-        print("\n🔧 FIX: Check Reminder model configuration")
-    elif not sendgrid_ok:
-        print("\n🔧 FIX: Check SendGridDomainAuth model configuration")
-    elif not utils_ok:
-        print("\n🔧 FIX: Check utils.py imports and functions")
-    elif not admin_ok:
-        print("\n🔧 FIX: Check admin.py configuration")
+# ── Reminder model ─────────────────────────────────────────────────────────────
 
-if __name__ == "__main__":
-    main()
+class ReminderModelTest(TestCase):
+    def setUp(self):
+        self.company = make_company()
+        self.user = make_user(self.company)
+
+    def _reminder(self, **kwargs):
+        defaults = dict(
+            title='Stand-up',
+            receiver_email='team@example.com',
+            interval_type='daily',
+            reminder_start_date=timezone.now(),
+            company=self.company,
+            created_by=self.user,
+            active=True,
+        )
+        defaults.update(kwargs)
+        return Reminder.objects.create(**defaults)
+
+    def test_create_and_str(self):
+        r = self._reminder()
+        self.assertIn('Stand-up', str(r))
+
+    def test_defaults(self):
+        r = self._reminder()
+        self.assertFalse(r.send)
+        self.assertFalse(r.completed)
+        self.assertFalse(r.is_deleted)
+
+    def test_soft_delete_flag(self):
+        r = self._reminder()
+        # Reminder uses SoftDeleteManager which filters is_deleted=False by default.
+        # Use all_objects (the unfiltered manager) to verify the flag was persisted.
+        Reminder.all_objects.filter(pk=r.pk).update(is_deleted=True)
+        self.assertTrue(
+            Reminder.all_objects.filter(pk=r.pk, is_deleted=True).exists()
+        )
+        # Confirm the default manager excludes it
+        self.assertFalse(Reminder.objects.filter(pk=r.pk).exists())
+
+    def test_one_time_reminder(self):
+        r = self._reminder(interval_type='one_time')
+        self.assertEqual(r.interval_type, 'one_time')
+
+
+# ── SendGridDomainAuth model ───────────────────────────────────────────────────
+
+class SendGridDomainAuthTest(TestCase):
+    def setUp(self):
+        self.company = make_company()
+        self.user = make_user(self.company)
+
+    def test_str(self):
+        auth = SendGridDomainAuth(
+            user=self.user,
+            customer_id='cust-1',
+            domain='notifyhub.example.com',
+        )
+        self.assertIn('example.com', str(auth))
+
+    def test_clean_requires_tenant_prefix(self):
+        """Domain must start with 'notifyhub.' (SUBDOMAIN_TENANT_PREFIX default)."""
+        auth = SendGridDomainAuth(user=self.user, domain='plain.example.com')
+        with self.assertRaises(ValidationError):
+            auth.clean()
+
+    def test_clean_accepts_valid_domain(self):
+        auth = SendGridDomainAuth(user=self.user, domain='notifyhub.example.com')
+        auth.clean()  # should not raise
+
+
+# ── Permission & Role models ───────────────────────────────────────────────────
+
+class PermissionRoleTest(TestCase):
+    def setUp(self):
+        self.company = make_company()
+
+    def test_permission_str(self):
+        p = Permission.objects.create(
+            code='reminders.create',
+            name='Create Reminders',
+            category='reminders',
+        )
+        self.assertIn('reminders.create', str(p))
+
+    def test_role_str(self):
+        r = Role.objects.create(name='HR Manager', company=self.company)
+        self.assertIn('HR Manager', str(r))
+
+    def test_role_with_permissions(self):
+        p = Permission.objects.create(
+            code='users.view', name='View Users', category='users',
+        )
+        r = Role.objects.create(name='Viewer', company=self.company)
+        r.permissions.add(p)
+        self.assertIn(p, r.permissions.all())
+
+
+# ── Utils ──────────────────────────────────────────────────────────────────────
+
+class UtilsTest(TestCase):
+    def test_generate_unique_id(self):
+        from app.utils import generate_unique_id
+        uid = generate_unique_id()
+        self.assertIsInstance(uid, str)
+        self.assertGreater(len(uid), 0)
+
+    def test_generate_unique_id_is_unique(self):
+        from app.utils import generate_unique_id
+        ids = {generate_unique_id() for _ in range(50)}
+        self.assertEqual(len(ids), 50)
+
+    def test_admin_imports(self):
+        from app.admin import ReminderAdmin, SendGridDomainAuthAdmin  # noqa: F401
