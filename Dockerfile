@@ -44,7 +44,6 @@ ENV PYTHONPATH=/reminder_app
 ENV PORT=8080
 
 RUN chmod +x /reminder_app/start.sh
-RUN chmod +x /reminder_app/minimal_start.sh
 
 EXPOSE 8080
 CMD ["/reminder_app/start.sh"]

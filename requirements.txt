@@ -76,3 +76,6 @@ config==0.5.1
 # numpy / pandas — were unused; removed to reduce Docker image size (~80 MB)
 #                  and improve Cloud Run cold-start time.
 # celery / kombu / billiard / redis — removed; Cloud Run uses Cloud Tasks instead.
+
+# ── Image Processing ──────────────────────────────────────────────────────────
+Pillow==10.4.0
