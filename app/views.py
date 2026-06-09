@@ -12,7 +12,6 @@ from .models import Reminder, Company, User, CompanySSOSettings, SendGridDomainA
 from django.contrib.auth import get_user_model, authenticate
 from django.conf import settings
 from django.core.cache import cache
-from django.contrib.auth import authenticate
 from django.core.signing import TimestampSigner, BadSignature, SignatureExpired
 from onelogin.saml2.auth import OneLogin_Saml2_Auth
 from onelogin.saml2.utils import OneLogin_Saml2_Utils
