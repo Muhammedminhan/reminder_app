@@ -249,11 +249,9 @@ node_modules/
 *.postman_collection.json
 data/
 db.sqlite3
-test*.py
 test.py
 patch_schema.py
 package.json
-*.txt
 frontend-examples.js
 frontend_example.html
 setup_production_oauth.py
