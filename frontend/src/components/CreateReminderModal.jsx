@@ -188,6 +188,7 @@ export default function CreateReminderModal({ isOpen, onClose, onSuccess }) {
         slackUserId: '',
         visibleToGroups: [],
         visibleToDepartment: false,
+        shareAllDepartments: false,
         selectedDepartmentId: '',
         senderName: '',
         tags: [],
@@ -220,6 +221,7 @@ export default function CreateReminderModal({ isOpen, onClose, onSuccess }) {
                 slackUserId: '',
                 visibleToGroups: [],
                 visibleToDepartment: false,
+                shareAllDepartments: false,
                 selectedDepartmentId: '',
                 senderName: '',
                 tags: [],
@@ -447,24 +449,53 @@ export default function CreateReminderModal({ isOpen, onClose, onSuccess }) {
                         <Shield size={14} /> Access & Collaboration
                     </div>
 
-                    {/* ── Access row: Department only ── */}
+                    {/* ── Department Visibility: two mutually-exclusive options ── */}
                     <div className="form-row" style={{ alignItems: 'flex-start' }}>
-                        {/* Department — checkbox first, then picker appears when ticked */}
+
+                        {/* Option A: Share with ALL departments */}
                         <div className="form-group">
                             <label style={{ marginBottom: '8px' }}>Department Visibility</label>
-
-                            {/* Step 1: Show the checkbox */}
                             <label className="toggle-label" style={{
-                                display: 'flex',
-                                alignItems: 'flex-start',
-                                gap: '12px',
-                                cursor: 'pointer',
+                                display: 'flex', alignItems: 'flex-start', gap: '12px', cursor: 'pointer',
+                                padding: '12px 14px',
+                                background: formData.shareAllDepartments ? 'rgba(0,171,228,0.06)' : 'var(--bg-card)',
+                                borderRadius: 'var(--radius-md)',
+                                border: formData.shareAllDepartments ? '1px solid rgba(0,171,228,0.35)' : '1px solid var(--border)',
+                                margin: 0, transition: 'all 0.2s ease'
+                            }}>
+                                <input
+                                    type="checkbox"
+                                    checked={formData.shareAllDepartments}
+                                    onChange={e => setFormData({
+                                        ...formData,
+                                        shareAllDepartments: e.target.checked,
+                                        // mutually exclusive — untick the other one
+                                        visibleToDepartment: e.target.checked ? false : formData.visibleToDepartment,
+                                        selectedDepartmentId: '',
+                                    })}
+                                    style={{ width: 'auto', margin: '2px 0 0 0', flexShrink: 0, accentColor: '#00ABE4' }}
+                                />
+                                <div>
+                                    <div style={{ fontSize: '13.5px', fontWeight: '600', color: 'var(--text-main)', textTransform: 'none', letterSpacing: 'normal' }}>
+                                        Share with all departments
+                                    </div>
+                                    <div style={{ fontSize: '12px', color: 'var(--text-dim)', marginTop: '3px', fontWeight: '400' }}>
+                                        Everyone across all departments will see this reminder
+                                    </div>
+                                </div>
+                            </label>
+                        </div>
+
+                        {/* Option B: Share with a specific department — shows picker when ticked */}
+                        <div className="form-group">
+                            <label style={{ marginBottom: '8px', visibility: 'hidden' }}>_</label>
+                            <label className="toggle-label" style={{
+                                display: 'flex', alignItems: 'flex-start', gap: '12px', cursor: 'pointer',
                                 padding: '12px 14px',
                                 background: formData.visibleToDepartment ? 'rgba(0,171,228,0.06)' : 'var(--bg-card)',
                                 borderRadius: 'var(--radius-md)',
                                 border: formData.visibleToDepartment ? '1px solid rgba(0,171,228,0.35)' : '1px solid var(--border)',
-                                margin: 0,
-                                transition: 'all 0.2s ease'
+                                margin: 0, transition: 'all 0.2s ease'
                             }}>
                                 <input
                                     type="checkbox"
@@ -472,7 +503,8 @@ export default function CreateReminderModal({ isOpen, onClose, onSuccess }) {
                                     onChange={e => setFormData({
                                         ...formData,
                                         visibleToDepartment: e.target.checked,
-                                        // clear the selected department when unchecking
+                                        // mutually exclusive — untick the other one
+                                        shareAllDepartments: e.target.checked ? false : formData.shareAllDepartments,
                                         selectedDepartmentId: e.target.checked ? formData.selectedDepartmentId : '',
                                     })}
                                     style={{ width: 'auto', margin: '2px 0 0 0', flexShrink: 0, accentColor: '#00ABE4' }}
@@ -482,29 +514,23 @@ export default function CreateReminderModal({ isOpen, onClose, onSuccess }) {
                                         Share with my department
                                     </div>
                                     <div style={{ fontSize: '12px', color: 'var(--text-dim)', marginTop: '3px', fontWeight: '400' }}>
-                                        {formData.visibleToDepartment
-                                            ? 'Select which department below'
-                                            : 'Tick to restrict visibility to a specific department'}
+                                        {formData.visibleToDepartment ? 'Select which department below' : 'Tick to pick a specific department'}
                                     </div>
                                 </div>
                             </label>
 
-                            {/* Step 2: Department picker — only shown when checkbox is ticked */}
+                            {/* Department picker — slides in when "Share with my department" is ticked */}
                             {formData.visibleToDepartment && (
-                                <div style={{ marginTop: '10px', animation: 'fadeIn 0.2s ease' }}>
+                                <div style={{ marginTop: '10px' }}>
                                     <select
                                         value={formData.selectedDepartmentId}
                                         onChange={e => setFormData({ ...formData, selectedDepartmentId: e.target.value })}
                                         style={{
-                                            width: '100%',
-                                            padding: '11px 14px',
+                                            width: '100%', padding: '11px 14px',
                                             borderRadius: 'var(--radius-md)',
                                             border: '1.5px solid rgba(0,171,228,0.35)',
-                                            background: 'var(--bg-card)',
-                                            color: 'var(--text-main)',
-                                            fontSize: '14px',
-                                            outline: 'none',
-                                            cursor: 'pointer',
+                                            background: 'var(--bg-card)', color: 'var(--text-main)',
+                                            fontSize: '14px', outline: 'none', cursor: 'pointer',
                                         }}
                                     >
                                         <option value="">— Select a department —</option>
