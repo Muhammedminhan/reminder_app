@@ -443,36 +443,44 @@ export default function CreateReminderModal({ isOpen, onClose, onSuccess }) {
 
                     <div className="form-row" style={{ alignItems: 'flex-start' }}>
                         <div className="form-group">
-                            <label>Visible to Groups</label>
+                            <label>Restrict to Groups</label>
                             <MultiSelectDropdown
-                                placeholder="Select groups..."
+                                placeholder="All groups (no restriction)"
                                 options={(optionsData?.groups || []).map(g => ({ value: g.id, label: g.name }))}
                                 selectedValues={formData.visibleToGroups}
                                 onChange={values => setFormData({ ...formData, visibleToGroups: values })}
                             />
+                            <small className="help-text">Leave empty to allow all groups to see this reminder</small>
                         </div>
                         <div className="form-group">
-                            <label style={{ marginBottom: '12px' }}>Department Access</label>
-                            <label className="toggle-label" style={{ 
-                                display: 'flex', 
-                                alignItems: 'center', 
-                                gap: '12px', 
-                                cursor: 'pointer', 
-                                padding: '10px 14px',
-                                background: 'var(--bg-card)',
+                            <label style={{ marginBottom: '8px' }}>Department Visibility</label>
+                            <label className="toggle-label" style={{
+                                display: 'flex',
+                                alignItems: 'flex-start',
+                                gap: '12px',
+                                cursor: 'pointer',
+                                padding: '12px 14px',
+                                background: formData.visibleToDepartment ? 'rgba(0,171,228,0.06)' : 'var(--bg-card)',
                                 borderRadius: 'var(--radius-md)',
-                                border: '1px solid var(--border)',
-                                margin: 0
+                                border: formData.visibleToDepartment ? '1px solid rgba(0,171,228,0.35)' : '1px solid var(--border)',
+                                margin: 0,
+                                transition: 'all 0.2s ease'
                             }}>
-                                <input 
-                                    type="checkbox" 
+                                <input
+                                    type="checkbox"
                                     checked={formData.visibleToDepartment}
                                     onChange={e => setFormData({ ...formData, visibleToDepartment: e.target.checked })}
-                                    style={{ width: 'auto', margin: 0 }}
+                                    style={{ width: 'auto', margin: '2px 0 0 0', flexShrink: 0, accentColor: '#00ABE4' }}
                                 />
-                                <span style={{ fontSize: '13px', fontWeight: 'bold', color: 'var(--text-main)', textTransform: 'none', letterSpacing: 'normal' }}>Branded to Dept.</span>
+                                <div>
+                                    <div style={{ fontSize: '13.5px', fontWeight: '600', color: 'var(--text-main)', textTransform: 'none', letterSpacing: 'normal' }}>
+                                        Share with my department
+                                    </div>
+                                    <div style={{ fontSize: '12px', color: 'var(--text-dim)', marginTop: '3px', fontWeight: '400' }}>
+                                        All members in your department will see this reminder
+                                    </div>
+                                </div>
                             </label>
-                            <small className="help-text">Visible to all department members.</small>
                         </div>
                         <div className="form-group">
                             <label style={{ marginBottom: '12px' }}>Formal Task</label>
