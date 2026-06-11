@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { gql, useMutation, useQuery } from '@apollo/client';
-import { X, Paperclip, Loader2, Plus, Info, Calendar, Send, Shield, Hash } from 'lucide-react';
+import { X, Paperclip, Loader2, Plus, Info, Calendar, Send, Shield, Hash, Eye, Mail, MessageSquare, ChevronLeft } from 'lucide-react';
 import { uploadReminderAttachment } from '../lib/api';
 import CustomRecurrenceModal from './CustomRecurrenceModal';
 
@@ -178,8 +178,10 @@ const CREATE_REMINDER = gql`
 export default function CreateReminderModal({ isOpen, onClose, onSuccess }) {
     const { data: optionsData } = useQuery(GET_FORM_OPTIONS, { skip: !isOpen });
 
+    const [showPreview, setShowPreview] = useState(false);
     const [formData, setFormData] = useState({
         title: '',
+        subject: '',
         description: '',
         receiverEmail: '',
         intervalType: 'one_time',
@@ -212,8 +214,10 @@ export default function CreateReminderModal({ isOpen, onClose, onSuccess }) {
         onCompleted: () => {
             if (onSuccess) onSuccess();
             onClose();
+            setShowPreview(false);
             setFormData({
                 title: '',
+                subject: '',
                 description: '',
                 receiverEmail: '',
                 intervalType: 'one_time',
@@ -259,28 +263,15 @@ export default function CreateReminderModal({ isOpen, onClose, onSuccess }) {
         }
     };
 
-    const handleSubmit = (e) => {
-        e.preventDefault();
-
-        // Enforce that at least one department option is selected
-        if (!formData.shareAllDepartments && !formData.visibleToDepartment) {
-            setDeptError(true);
-            // Scroll to the Access & Collaboration section
-            document.getElementById('dept-visibility-section')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            return;
-        }
-        setDeptError(false);
-
+    const handleFinalSubmit = () => {
         const vars = {
             ...formData,
+            // Use subject as the email subject line, fall back to title
+            title: formData.subject || formData.title,
             reminderStartDate: new Date(formData.reminderStartDate).toISOString(),
             attachmentIds: formData.attachments.map(a => a.id),
-            // Map the two department checkboxes to the backend Boolean field:
-            //   "Share with all departments" OR "Share with my department" → true
-            //   Neither ticked → false (reminder stays private)
             visibleToDepartment: formData.shareAllDepartments || formData.visibleToDepartment,
         };
-
         if (formData.intervalType === 'custom') {
             vars.customRepeatEvery = formData.customRecurrence.repeatEvery;
             vars.customRepeatUnit = formData.customRecurrence.repeatUnit;
@@ -291,14 +282,26 @@ export default function CreateReminderModal({ isOpen, onClose, onSuccess }) {
                 vars.reminderEndDate = new Date(formData.customRecurrence.endDate).toISOString();
             }
         }
-
-        // Remove frontend-only fields that don't exist in the GraphQL mutation
         delete vars.customRecurrence;
         delete vars.attachments;
-        delete vars.shareAllDepartments;   // UI-only — mapped to visibleToDepartment above
-        delete vars.selectedDepartmentId;  // UI-only — backend uses creator's own department
-
+        delete vars.shareAllDepartments;
+        delete vars.selectedDepartmentId;
+        delete vars.subject; // mapped to title above
         createReminder({ variables: vars });
+    };
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+
+        // Enforce that at least one department option is selected
+        if (!formData.shareAllDepartments && !formData.visibleToDepartment) {
+            setDeptError(true);
+            document.getElementById('dept-visibility-section')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            return;
+        }
+        setDeptError(false);
+        // Show preview instead of submitting immediately
+        setShowPreview(true);
     };
 
     const handleFileChange = async (e) => {
@@ -331,11 +334,113 @@ export default function CreateReminderModal({ isOpen, onClose, onSuccess }) {
                 </button>
 
                 <div className="modal-header">
-                    <h2>Create New Reminder</h2>
+                    <h2 style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        {showPreview && (
+                            <button onClick={() => setShowPreview(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px', display: 'flex', alignItems: 'center', color: '#00ABE4' }}>
+                                <ChevronLeft size={20} />
+                            </button>
+                        )}
+                        {showPreview ? 'Preview' : 'Create New Reminder'}
+                    </h2>
                     <p>Fill in the details to schedule a new notification.</p>
                 </div>
 
-                <form onSubmit={handleSubmit} style={{ paddingBottom: '20px' }}>
+                {/* ── PREVIEW PANEL ─────────────────────────────────── */}
+                {showPreview && (() => {
+                    const subject = formData.subject || formData.title;
+                    const body = formData.description || '(no message body)';
+                    const recipients = formData.receiverEmail;
+                    const slackChannels = formData.slackChannels;
+                    const slackUsers = formData.slackUserId;
+                    const hasSlack = slackChannels || slackUsers;
+                    const dept = formData.shareAllDepartments
+                        ? 'All departments'
+                        : formData.visibleToDepartment
+                            ? (formData.selectedDepartmentId
+                                ? (optionsData?.departments || []).find(d => d.id === formData.selectedDepartmentId)?.name || 'My department'
+                                : 'My department')
+                            : 'Not shared';
+                    return (
+                        <div style={{ padding: '0 4px 20px' }}>
+                            {/* Email preview */}
+                            <div style={{ marginBottom: '20px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                                    <Mail size={15} color="#00ABE4" />
+                                    <span style={{ fontSize: '12px', fontWeight: '700', color: '#00ABE4', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Email Preview</span>
+                                </div>
+                                <div style={{ border: '1px solid rgba(0,171,228,0.2)', borderRadius: '14px', overflow: 'hidden' }}>
+                                    {/* Email header */}
+                                    <div style={{ background: 'rgba(0,171,228,0.05)', padding: '14px 18px', borderBottom: '1px solid rgba(0,171,228,0.1)' }}>
+                                        <div style={{ display: 'grid', gridTemplateColumns: '60px 1fr', gap: '6px', fontSize: '13px' }}>
+                                            <span style={{ color: '#6b8099', fontWeight: '600' }}>From:</span>
+                                            <span style={{ color: '#0d1f2d' }}>{formData.senderName || 'NotifyHub'}</span>
+                                            <span style={{ color: '#6b8099', fontWeight: '600' }}>To:</span>
+                                            <span style={{ color: '#0d1f2d', wordBreak: 'break-all' }}>{recipients || '—'}</span>
+                                            <span style={{ color: '#6b8099', fontWeight: '600' }}>Subject:</span>
+                                            <span style={{ color: '#0d1f2d', fontWeight: '600' }}>{subject || '—'}</span>
+                                        </div>
+                                    </div>
+                                    {/* Email body */}
+                                    <div style={{ padding: '16px 18px', background: '#ffffff', fontSize: '13.5px', color: '#0d1f2d', lineHeight: '1.7', whiteSpace: 'pre-wrap', minHeight: '60px' }}>
+                                        {body}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Slack preview */}
+                            {hasSlack && (
+                                <div style={{ marginBottom: '20px' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                                        <MessageSquare size={15} color="#4A154B" />
+                                        <span style={{ fontSize: '12px', fontWeight: '700', color: '#4A154B', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Slack Preview</span>
+                                    </div>
+                                    <div style={{ border: '1px solid rgba(74,21,75,0.2)', borderRadius: '14px', overflow: 'hidden' }}>
+                                        <div style={{ background: 'rgba(74,21,75,0.04)', padding: '12px 18px', borderBottom: '1px solid rgba(74,21,75,0.1)', fontSize: '12px', color: '#6b8099' }}>
+                                            {slackChannels && <span>📢 Channels: <b style={{ color: '#0d1f2d' }}>{slackChannels}</b></span>}
+                                            {slackChannels && slackUsers && <span style={{ margin: '0 8px' }}>·</span>}
+                                            {slackUsers && <span>👤 Users notified</span>}
+                                        </div>
+                                        <div style={{ padding: '14px 18px', background: '#ffffff' }}>
+                                            <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                                                <div style={{ width: '36px', height: '36px', borderRadius: '8px', background: 'linear-gradient(135deg,#00ABE4,#0090c4)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                                    <span style={{ color: '#fff', fontWeight: '800', fontSize: '14px' }}>N</span>
+                                                </div>
+                                                <div>
+                                                    <div style={{ fontSize: '13px', fontWeight: '700', color: '#0d1f2d', marginBottom: '4px' }}>NotifyHub <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '400' }}>App</span></div>
+                                                    <div style={{ fontSize: '13.5px', fontWeight: '600', color: '#0d1f2d', marginBottom: '4px' }}>🔔 {subject}</div>
+                                                    <div style={{ fontSize: '13px', color: '#475569', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>{body}</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Summary row */}
+                            <div style={{ padding: '12px 16px', background: 'rgba(0,171,228,0.04)', border: '1px solid rgba(0,171,228,0.15)', borderRadius: '12px', marginBottom: '20px' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px', fontSize: '12.5px' }}>
+                                    <div><span style={{ color: '#6b8099' }}>Frequency: </span><b style={{ color: '#0d1f2d' }}>{formData.intervalType?.replace('_', ' ')}</b></div>
+                                    <div><span style={{ color: '#6b8099' }}>Start date: </span><b style={{ color: '#0d1f2d' }}>{formData.reminderStartDate}</b></div>
+                                    <div><span style={{ color: '#6b8099' }}>Department: </span><b style={{ color: '#0d1f2d' }}>{dept}</b></div>
+                                    {formData.attachments?.length > 0 && <div><span style={{ color: '#6b8099' }}>Attachments: </span><b style={{ color: '#0d1f2d' }}>{formData.attachments.length}</b></div>}
+                                </div>
+                            </div>
+
+                            {/* Footer actions */}
+                            <div className="modal-footer">
+                                <button type="button" onClick={() => setShowPreview(false)} className="btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <ChevronLeft size={15} /> Edit
+                                </button>
+                                <button type="button" onClick={handleFinalSubmit} className="btn-primary" disabled={loading} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    {loading ? <><Loader2 size={15} className="loading-spinner" /> Sending...</> : <><Send size={15} /> Confirm &amp; Send</>}
+                                </button>
+                            </div>
+                        </div>
+                    );
+                })()}
+
+                {/* ── FORM (hidden when preview is shown) ────────────── */}
+                <form onSubmit={handleSubmit} style={{ paddingBottom: '20px', display: showPreview ? 'none' : 'block' }}>
                     <div className="form-section-title">
                         <Info size={14} /> Identification
                     </div>
@@ -349,6 +454,17 @@ export default function CreateReminderModal({ isOpen, onClose, onSuccess }) {
                             value={formData.title}
                             onChange={e => setFormData({ ...formData, title: e.target.value })}
                         />
+                    </div>
+
+                    <div className="form-group">
+                        <label>Subject <span style={{ color: '#6b8099', fontWeight: 400, textTransform: 'none', letterSpacing: 'normal', fontSize: '11px' }}>(Email & Slack subject line)</span></label>
+                        <input
+                            type="text"
+                            placeholder="E.g. Action Required: Monthly Business Review"
+                            value={formData.subject}
+                            onChange={e => setFormData({ ...formData, subject: e.target.value })}
+                        />
+                        <small className="help-text">This appears as the subject line in emails and the heading in Slack messages. Defaults to Title if left blank.</small>
                     </div>
 
                     <div className="form-group">
@@ -688,8 +804,8 @@ export default function CreateReminderModal({ isOpen, onClose, onSuccess }) {
 
                     <div className="modal-footer">
                         <button type="button" onClick={onClose} className="btn-secondary">Cancel</button>
-                        <button type="submit" className="btn-primary" disabled={loading}>
-                            {loading ? 'Creating...' : 'Create Reminder'}
+                        <button type="submit" className="btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <Eye size={16} /> Preview &amp; Send
                         </button>
                     </div>
                 </form>
