@@ -447,21 +447,9 @@ export default function CreateReminderModal({ isOpen, onClose, onSuccess }) {
                         <Shield size={14} /> Access & Collaboration
                     </div>
 
-                    {/* ── Access row: Groups (always shown) + Department (conditional) ── */}
+                    {/* ── Access row: Department only ── */}
                     <div className="form-row" style={{ alignItems: 'flex-start' }}>
-                        {/* LEFT: Group restriction — always visible */}
-                        <div className="form-group">
-                            <label>Restrict to Groups</label>
-                            <MultiSelectDropdown
-                                placeholder="All groups (no restriction)"
-                                options={(optionsData?.groups || []).map(g => ({ value: g.id, label: g.name }))}
-                                selectedValues={formData.visibleToGroups}
-                                onChange={values => setFormData({ ...formData, visibleToGroups: values })}
-                            />
-                            <small className="help-text">Leave empty to share with all groups</small>
-                        </div>
-
-                        {/* RIGHT: Department — checkbox first, then picker appears when ticked */}
+                        {/* Department — checkbox first, then picker appears when ticked */}
                         <div className="form-group">
                             <label style={{ marginBottom: '8px' }}>Department Visibility</label>
 
