@@ -98,6 +98,10 @@ const GET_FORM_OPTIONS = gql`
       id
       name
     }
+    departments {
+      id
+      name
+    }
   }
 `;
 
@@ -184,6 +188,7 @@ export default function CreateReminderModal({ isOpen, onClose, onSuccess }) {
         slackUserId: '',
         visibleToGroups: [],
         visibleToDepartment: false,
+        selectedDepartmentId: '',
         senderName: '',
         tags: [],
         attachments: [],
@@ -215,6 +220,7 @@ export default function CreateReminderModal({ isOpen, onClose, onSuccess }) {
                 slackUserId: '',
                 visibleToGroups: [],
                 visibleToDepartment: false,
+                selectedDepartmentId: '',
                 senderName: '',
                 tags: [],
                 attachments: []
@@ -441,7 +447,9 @@ export default function CreateReminderModal({ isOpen, onClose, onSuccess }) {
                         <Shield size={14} /> Access & Collaboration
                     </div>
 
+                    {/* ── Access row: Groups (always shown) + Department (conditional) ── */}
                     <div className="form-row" style={{ alignItems: 'flex-start' }}>
+                        {/* LEFT: Group restriction — always visible */}
                         <div className="form-group">
                             <label>Restrict to Groups</label>
                             <MultiSelectDropdown
@@ -450,10 +458,14 @@ export default function CreateReminderModal({ isOpen, onClose, onSuccess }) {
                                 selectedValues={formData.visibleToGroups}
                                 onChange={values => setFormData({ ...formData, visibleToGroups: values })}
                             />
-                            <small className="help-text">Leave empty to allow all groups to see this reminder</small>
+                            <small className="help-text">Leave empty to share with all groups</small>
                         </div>
+
+                        {/* RIGHT: Department — checkbox first, then picker appears when ticked */}
                         <div className="form-group">
                             <label style={{ marginBottom: '8px' }}>Department Visibility</label>
+
+                            {/* Step 1: Show the checkbox */}
                             <label className="toggle-label" style={{
                                 display: 'flex',
                                 alignItems: 'flex-start',
@@ -469,7 +481,12 @@ export default function CreateReminderModal({ isOpen, onClose, onSuccess }) {
                                 <input
                                     type="checkbox"
                                     checked={formData.visibleToDepartment}
-                                    onChange={e => setFormData({ ...formData, visibleToDepartment: e.target.checked })}
+                                    onChange={e => setFormData({
+                                        ...formData,
+                                        visibleToDepartment: e.target.checked,
+                                        // clear the selected department when unchecking
+                                        selectedDepartmentId: e.target.checked ? formData.selectedDepartmentId : '',
+                                    })}
                                     style={{ width: 'auto', margin: '2px 0 0 0', flexShrink: 0, accentColor: '#00ABE4' }}
                                 />
                                 <div>
@@ -477,10 +494,39 @@ export default function CreateReminderModal({ isOpen, onClose, onSuccess }) {
                                         Share with my department
                                     </div>
                                     <div style={{ fontSize: '12px', color: 'var(--text-dim)', marginTop: '3px', fontWeight: '400' }}>
-                                        All members in your department will see this reminder
+                                        {formData.visibleToDepartment
+                                            ? 'Select which department below'
+                                            : 'Tick to restrict visibility to a specific department'}
                                     </div>
                                 </div>
                             </label>
+
+                            {/* Step 2: Department picker — only shown when checkbox is ticked */}
+                            {formData.visibleToDepartment && (
+                                <div style={{ marginTop: '10px', animation: 'fadeIn 0.2s ease' }}>
+                                    <select
+                                        value={formData.selectedDepartmentId}
+                                        onChange={e => setFormData({ ...formData, selectedDepartmentId: e.target.value })}
+                                        style={{
+                                            width: '100%',
+                                            padding: '11px 14px',
+                                            borderRadius: 'var(--radius-md)',
+                                            border: '1.5px solid rgba(0,171,228,0.35)',
+                                            background: 'var(--bg-card)',
+                                            color: 'var(--text-main)',
+                                            fontSize: '14px',
+                                            outline: 'none',
+                                            cursor: 'pointer',
+                                        }}
+                                    >
+                                        <option value="">— Select a department —</option>
+                                        {(optionsData?.departments || []).map(d => (
+                                            <option key={d.id} value={d.id}>{d.name}</option>
+                                        ))}
+                                    </select>
+                                    <small className="help-text">Only members of the selected department will see this reminder</small>
+                                </div>
+                            )}
                         </div>
                         <div className="form-group">
                             <label style={{ marginBottom: '12px' }}>Formal Task</label>
