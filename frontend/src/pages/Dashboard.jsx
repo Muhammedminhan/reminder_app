@@ -114,12 +114,26 @@ const ASSIGN_ROLE = gql`
 const ADMIN_QUERY = gql`
   query GetAdminData {
     users { id username email firstName lastName isSuperuser isStaff isActive departments { id name } }
-    companies { id name email }
-    departments { id name }
+    companies { id name email address website }
+    departments { id name company { name } }
     roles { id name description permissions { id name } }
     permissions { id name code category }
     reminders { id title receiverEmail active send completed company { name } createdBy { username } reminderStartDate intervalType }
     oauthApplications { id name clientId clientType authorizationGrantType }
+  }
+`;
+
+const CREATE_COMPANY = gql`
+  mutation CreateCompany($name: String!, $email: String, $address: String, $website: String) {
+    createCompany(name: $name, email: $email, address: $address, website: $website) {
+      ok company { id name email }
+    }
+  }
+`;
+
+const DELETE_COMPANY_MUTATION = gql`
+  mutation DeleteCompany($id: ID!) {
+    deleteCompany(id: $id) { ok }
   }
 `;
 
@@ -406,6 +420,8 @@ export default function Dashboard() {
     const [newRoleForm, setNewRoleForm] = useState({ name:'', description:'' });
     // adminData query and admin mutations — declared here but skip logic uses isAdmin state set after INITIAL_QUERY
     const [isAdminUser, setIsAdminUser] = useState(false);
+    const [showCreateCompany, setShowCreateCompany] = useState(false);
+    const [newCompanyForm, setNewCompanyForm] = useState({ name:'', email:'', address:'', website:'' });
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
     const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
@@ -474,6 +490,8 @@ export default function Dashboard() {
     const [createRole] = useMutation(CREATE_ROLE, { onCompleted: () => { refetchAdmin(); setShowCreateRole(false); setNewRoleForm({ name:'', description:'' }); showToast('Role created'); }});
     const [deleteRole] = useMutation(DELETE_ROLE, { onCompleted: () => { refetchAdmin(); showToast('Role deleted'); }});
     const [assignRole] = useMutation(ASSIGN_ROLE, { onCompleted: () => { refetchAdmin(); showToast('Role assigned'); }});
+    const [createCompany] = useMutation(CREATE_COMPANY, { onCompleted: () => { refetchAdmin(); setShowCreateCompany(false); setNewCompanyForm({ name:'', email:'', address:'', website:'' }); showToast('Company created'); }});
+    const [deleteCompanyMutation] = useMutation(DELETE_COMPANY_MUTATION, { onCompleted: () => { refetchAdmin(); showToast('Company deleted'); }});
 
     const [updateReminder] = useMutation(UPDATE_REMINDER, {
         refetchQueries: [{ query: INITIAL_QUERY }]
@@ -1590,27 +1608,59 @@ export default function Dashboard() {
                                         <div style={adminCardStyle}>
                                             <div style={adminHeaderStyle}>
                                                 <div>
-                                                    <div style={{ fontWeight:'700', color:'#0d1f2d', fontSize:'15px' }}>Company Settings</div>
+                                                    <div style={{ fontWeight:'700', color:'#0d1f2d', fontSize:'15px' }}>Companies</div>
                                                     <div style={{ fontSize:'12px', color:'#6b8099', marginTop:'2px' }}>{aCompanies.length} {aCompanies.length===1?'company':'companies'}</div>
                                                 </div>
+                                                <button style={primaryBtnStyle} onClick={() => setShowCreateCompany(v=>!v)}>
+                                                    <span style={{ display:'flex', alignItems:'center', gap:'6px' }}><Plus size={14} /> Add Company</span>
+                                                </button>
                                             </div>
+                                            {showCreateCompany && (
+                                                <div style={{ padding:'20px 24px', borderBottom:'1px solid rgba(0,171,228,0.1)', background:'rgba(0,171,228,0.02)' }}>
+                                                    <div style={{ fontWeight:'600', color:'#0d1f2d', marginBottom:'14px', fontSize:'13.5px' }}>New Company</div>
+                                                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px', marginBottom:'12px' }}>
+                                                        {[['name','Company Name','e.g. Acme Corp'],['email','Email','contact@company.com'],['address','Address','123 Main St'],['website','Website','https://company.com']].map(([k,label,ph]) => (
+                                                            <div key={k}>
+                                                                <div style={{ fontSize:'11.5px', fontWeight:'700', color:'#6b8099', marginBottom:'5px', textTransform:'uppercase', letterSpacing:'0.06em' }}>{label}</div>
+                                                                <input placeholder={ph} value={newCompanyForm[k]} onChange={e=>setNewCompanyForm(f=>({...f,[k]:e.target.value}))} style={inputStyle} />
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                    <div style={{ display:'flex', gap:'10px' }}>
+                                                        <button style={primaryBtnStyle} onClick={() => createCompany({ variables: newCompanyForm })}>
+                                                            <span style={{ display:'flex', alignItems:'center', gap:'6px' }}><Save size={13} /> Save Company</span>
+                                                        </button>
+                                                        <button style={{ ...smallBtnStyle(false), background:'#fff' }} onClick={() => setShowCreateCompany(false)}>Cancel</button>
+                                                    </div>
+                                                </div>
+                                            )}
                                             <div style={adminBodyStyle}>
                                                 {aCompanies.length === 0 ? (
                                                     <div style={{ textAlign:'center', padding:'30px', color:'#94afc5' }}>No companies found</div>
                                                 ) : (
                                                     <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
-                                                        {aCompanies.map(c => (
+                                                        {aCompanies.map(c => {
+                                                            const deptCount = aDepts.filter(d => d.company?.name === c.name).length;
+                                                            const userCount = aUsers.filter(u => u.departments?.length > 0).length;
+                                                            return (
                                                             <div key={c.id} style={{ display:'flex', alignItems:'center', gap:'14px', padding:'14px 18px', background:'#f4f8fc', borderRadius:'12px', border:'1px solid rgba(0,171,228,0.1)' }}>
-                                                                <div style={{ width:'40px', height:'40px', borderRadius:'12px', background:'linear-gradient(135deg,#00ABE4,#0090c4)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                                                                    <Briefcase size={18} color="#fff" />
+                                                                <div style={{ width:'44px', height:'44px', borderRadius:'12px', background:'linear-gradient(135deg,#00ABE4,#0090c4)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, fontSize:'18px', fontWeight:'800', color:'#fff' }}>
+                                                                    {c.name[0].toUpperCase()}
                                                                 </div>
                                                                 <div style={{ flex:1 }}>
                                                                     <div style={{ fontWeight:'700', color:'#0d1f2d', fontSize:'14px' }}>{c.name}</div>
-                                                                    <div style={{ fontSize:'12px', color:'#6b8099', marginTop:'2px' }}>{c.email}</div>
+                                                                    <div style={{ fontSize:'12px', color:'#6b8099', marginTop:'2px' }}>{c.email} {c.website && <span>· <a href={c.website} target="_blank" rel="noopener noreferrer" style={{ color:'#00ABE4' }}>{c.website}</a></span>}</div>
                                                                 </div>
-                                                                <span style={{ padding:'4px 10px', borderRadius:'8px', background:'rgba(0,171,228,0.1)', color:'#00ABE4', fontSize:'11.5px', fontWeight:'700' }}>Active</span>
+                                                                <div style={{ display:'flex', gap:'8px', alignItems:'center' }}>
+                                                                    <span style={{ padding:'3px 10px', borderRadius:'8px', background:'rgba(0,171,228,0.08)', color:'#00ABE4', fontSize:'11.5px', fontWeight:'600' }}>{deptCount} depts</span>
+                                                                    <span style={{ padding:'3px 10px', borderRadius:'8px', background:'rgba(0,171,228,0.08)', color:'#00ABE4', fontSize:'11.5px', fontWeight:'600' }}>{aUsers.filter(u=>true).length} users</span>
+                                                                    <button style={smallBtnStyle(true)} title="Delete company" onClick={() => { if(window.confirm(`Delete company "${c.name}"? This will affect all users in this company.`)) deleteCompanyMutation({ variables:{ id:c.id } }); }}>
+                                                                        <Trash2 size={12} />
+                                                                    </button>
+                                                                </div>
                                                             </div>
-                                                        ))}
+                                                            );
+                                                        })}
                                                     </div>
                                                 )}
                                             </div>
