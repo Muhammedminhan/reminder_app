@@ -37,13 +37,89 @@ import {
     Key,
     ChevronLeft,
     Paperclip,
-    X
+    X,
+    UserPlus,
+    Edit3,
+    Lock,
+    Unlock,
+    Crown,
+    Tag,
+    Save,
+    AlertTriangle
 } from 'lucide-react';
 import { logout, isAuthenticated } from '../lib/api';
 import { format } from 'date-fns';
 import CreateReminderModal from '../components/CreateReminderModal';
 import UpdateProfileModal from '../components/UpdateProfileModal';
 import Toast, { useToast } from '../components/Toast';
+
+// ── Admin mutations ──────────────────────────────────────────────────────────
+
+const CREATE_USER = gql`
+  mutation CreateUser($username: String!, $email: String!, $password: String!, $firstName: String, $lastName: String, $isStaff: Boolean, $isSuperuser: Boolean, $companyId: ID, $departmentIds: [ID]) {
+    createUser(username: $username, email: $email, password: $password, firstName: $firstName, lastName: $lastName, isStaff: $isStaff, isSuperuser: $isSuperuser, companyId: $companyId, departmentIds: $departmentIds) {
+      ok user { id username email firstName lastName isSuperuser isStaff }
+    }
+  }
+`;
+
+const UPDATE_USER_ADMIN = gql`
+  mutation UpdateUser($id: ID!, $firstName: String, $lastName: String, $email: String, $isStaff: Boolean, $isSuperuser: Boolean, $isActive: Boolean) {
+    updateUser(id: $id, firstName: $firstName, lastName: $lastName, email: $email, isStaff: $isStaff, isSuperuser: $isSuperuser, isActive: $isActive) {
+      ok user { id username email firstName lastName isSuperuser isStaff isActive }
+    }
+  }
+`;
+
+const DELETE_USER_MUTATION = gql`
+  mutation DeleteUser($id: ID!) {
+    deleteUser(id: $id) { ok }
+  }
+`;
+
+const CREATE_DEPT = gql`
+  mutation CreateDepartment($name: String!, $companyId: ID) {
+    createDepartment(name: $name, companyId: $companyId) {
+      ok department { id name }
+    }
+  }
+`;
+
+const DELETE_DEPT = gql`
+  mutation DeleteDepartment($id: ID!) {
+    deleteDepartment(id: $id) { ok }
+  }
+`;
+
+const CREATE_ROLE = gql`
+  mutation CreateRole($name: String!, $description: String, $permissionIds: [ID]) {
+    createRole(name: $name, description: $description, permissionIds: $permissionIds) {
+      ok role { id name description }
+    }
+  }
+`;
+
+const DELETE_ROLE = gql`
+  mutation DeleteRole($id: ID!) {
+    deleteRole(id: $id) { ok }
+  }
+`;
+
+const ASSIGN_ROLE = gql`
+  mutation AssignRoleToUser($userId: ID!, $roleId: ID!) {
+    assignRoleToUser(userId: $userId, roleId: $roleId) { ok }
+  }
+`;
+
+const ADMIN_QUERY = gql`
+  query GetAdminData {
+    users { id username email firstName lastName isSuperuser isStaff isActive departments { id name } }
+    companies { id name email }
+    departments { id name }
+    roles { id name description permissions { id name } }
+    permissions { id name code category }
+  }
+`;
 
 const INITIAL_QUERY = gql`
   query GetInitialData {
@@ -112,7 +188,10 @@ const INITIAL_QUERY = gql`
       firstName
       lastName
       profilePicture
+      isSuperuser
+      isStaff
       company {
+        id
         name
       }
       departments {
@@ -316,6 +395,22 @@ const SidebarLink = ({ icon: Icon, label, active, onClick, hasSubmenu }) => (
 export default function Dashboard() {
     const [activeView, setActiveView] = useState('dashboard');
     const [settingsTab, setSettingsTab] = useState('Profile');
+    const [adminTab, setAdminTab] = useState('users');
+    const [showCreateUser, setShowCreateUser] = useState(false);
+    const [showCreateDept, setShowCreateDept] = useState(false);
+    const [showCreateRole, setShowCreateRole] = useState(false);
+    const [newUserForm, setNewUserForm] = useState({ username:'', email:'', password:'', firstName:'', lastName:'', isStaff:false, isSuperuser:false });
+    const [newDeptName, setNewDeptName] = useState('');
+    const [newRoleForm, setNewRoleForm] = useState({ name:'', description:'' });
+    const { data: adminData, refetch: refetchAdmin } = useQuery(ADMIN_QUERY, { skip: !data?.me?.isSuperuser && !data?.me?.isStaff });
+    const [createUser] = useMutation(CREATE_USER, { onCompleted: () => { refetchAdmin(); setShowCreateUser(false); setNewUserForm({ username:'', email:'', password:'', firstName:'', lastName:'', isStaff:false, isSuperuser:false }); showToast('User created'); }});
+    const [deleteUserMutation] = useMutation(DELETE_USER_MUTATION, { onCompleted: () => { refetchAdmin(); showToast('User deleted'); }});
+    const [updateUserAdmin] = useMutation(UPDATE_USER_ADMIN, { onCompleted: () => { refetchAdmin(); showToast('User updated'); }});
+    const [createDept] = useMutation(CREATE_DEPT, { onCompleted: () => { refetchAdmin(); setShowCreateDept(false); setNewDeptName(''); showToast('Department created'); }});
+    const [deleteDept] = useMutation(DELETE_DEPT, { onCompleted: () => { refetchAdmin(); showToast('Department deleted'); }});
+    const [createRole] = useMutation(CREATE_ROLE, { onCompleted: () => { refetchAdmin(); setShowCreateRole(false); setNewRoleForm({ name:'', description:'' }); showToast('Role created'); }});
+    const [deleteRole] = useMutation(DELETE_ROLE, { onCompleted: () => { refetchAdmin(); showToast('Role deleted'); }});
+    const [assignRole] = useMutation(ASSIGN_ROLE, { onCompleted: () => { refetchAdmin(); showToast('Role assigned'); }});
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
     const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
@@ -949,8 +1044,10 @@ export default function Dashboard() {
                             </div>
 
                             <div className="settings-nav">
-                                {['Profile', 'Team', 'Security', 'Integration'].map(tab => (
-                                    <button key={tab} className={settingsTab === tab ? 'active' : ''} onClick={() => setSettingsTab(tab)}>{tab}</button>
+                                {['Profile', 'Team', 'Security', 'Integration', ...(data?.me?.isSuperuser || data?.me?.isStaff ? ['Admin'] : [])].map(tab => (
+                                    <button key={tab} className={settingsTab === tab ? 'active' : ''} onClick={() => setSettingsTab(tab)}>
+                                        {tab === 'Admin' ? <span style={{ display:'flex', alignItems:'center', gap:'5px' }}><Crown size={12} />{tab}</span> : tab}
+                                    </button>
                                 ))}
                             </div>
 
@@ -1260,6 +1357,254 @@ export default function Dashboard() {
                                     </div>
                                     </div> /* end Integration flex wrapper */
                                 )}
+
+                                {/* ══ ADMIN TAB ══════════════════════════════════════════════ */}
+                                {settingsTab === 'Admin' && (data?.me?.isSuperuser || data?.me?.isStaff) && (() => {
+                                    const aUsers = adminData?.users || [];
+                                    const aDepts = adminData?.departments || [];
+                                    const aRoles = adminData?.roles || [];
+                                    const aPerms = adminData?.permissions || [];
+                                    const aCompanies = adminData?.companies || [];
+
+                                    const adminCardStyle = { background:'#FFFFFF', border:'1px solid rgba(0,171,228,0.18)', borderRadius:'20px', marginBottom:'24px', overflow:'hidden', boxShadow:'0 2px 12px rgba(0,171,228,0.07)' };
+                                    const adminHeaderStyle = { padding:'18px 28px', background:'linear-gradient(135deg,rgba(0,171,228,0.07) 0%,rgba(233,241,250,0.5) 100%)', borderBottom:'1px solid rgba(0,171,228,0.12)', display:'flex', justifyContent:'space-between', alignItems:'center' };
+                                    const adminBodyStyle = { padding:'20px 24px' };
+                                    const inputStyle = { width:'100%', padding:'10px 14px', borderRadius:'10px', border:'1.5px solid rgba(0,171,228,0.2)', background:'#f4f8fc', fontSize:'13.5px', color:'#0d1f2d', outline:'none', boxSizing:'border-box' };
+                                    const smallBtnStyle = (danger) => ({ padding:'6px 14px', borderRadius:'8px', fontSize:'12px', fontWeight:'600', cursor:'pointer', border: danger ? '1px solid rgba(239,68,68,0.3)' : '1.5px solid rgba(0,171,228,0.3)', background: danger ? 'rgba(239,68,68,0.06)' : 'rgba(0,171,228,0.08)', color: danger ? '#dc2626' : '#00ABE4' });
+                                    const primaryBtnStyle = { padding:'9px 18px', borderRadius:'10px', fontSize:'13px', fontWeight:'600', cursor:'pointer', background:'#00ABE4', color:'#fff', border:'none', boxShadow:'0 3px 10px rgba(0,171,228,0.3)' };
+
+                                    return (
+                                    <div>
+                                        {/* Sub-nav */}
+                                        <div style={{ display:'flex', gap:'8px', marginBottom:'24px', flexWrap:'wrap' }}>
+                                            {[['users','Users',Users],['departments','Departments',Building],['roles','Roles & Permissions',Shield],['companies','Company',Briefcase]].map(([k,label,Icon]) => (
+                                                <button key={k} onClick={() => setAdminTab(k)} style={{ display:'flex', alignItems:'center', gap:'6px', padding:'8px 16px', borderRadius:'10px', fontSize:'13px', fontWeight:'600', cursor:'pointer', border:'1.5px solid', borderColor: adminTab===k ? '#00ABE4' : 'rgba(0,171,228,0.2)', background: adminTab===k ? '#00ABE4' : '#fff', color: adminTab===k ? '#fff' : '#3d5a73', transition:'all 0.18s' }}>
+                                                    <Icon size={14} />{label}
+                                                </button>
+                                            ))}
+                                        </div>
+
+                                        {/* ── USERS ── */}
+                                        {adminTab === 'users' && (
+                                        <div style={adminCardStyle}>
+                                            <div style={adminHeaderStyle}>
+                                                <div>
+                                                    <div style={{ fontWeight:'700', color:'#0d1f2d', fontSize:'15px' }}>User Management</div>
+                                                    <div style={{ fontSize:'12px', color:'#6b8099', marginTop:'2px' }}>{aUsers.length} users in workspace</div>
+                                                </div>
+                                                <button style={primaryBtnStyle} onClick={() => setShowCreateUser(v=>!v)}>
+                                                    <span style={{ display:'flex', alignItems:'center', gap:'6px' }}><UserPlus size={14} /> Create User</span>
+                                                </button>
+                                            </div>
+
+                                            {showCreateUser && (
+                                                <div style={{ padding:'20px 24px', borderBottom:'1px solid rgba(0,171,228,0.1)', background:'rgba(0,171,228,0.02)' }}>
+                                                    <div style={{ fontWeight:'600', color:'#0d1f2d', marginBottom:'14px', fontSize:'13.5px' }}>New User Details</div>
+                                                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px', marginBottom:'12px' }}>
+                                                        {[['username','Username','e.g. john_doe'],['email','Email','john@company.com'],['password','Password','Min 8 characters'],['firstName','First Name','John'],['lastName','Last Name','Doe']].map(([k,label,ph]) => (
+                                                            <div key={k}>
+                                                                <div style={{ fontSize:'11.5px', fontWeight:'700', color:'#6b8099', marginBottom:'5px', textTransform:'uppercase', letterSpacing:'0.06em' }}>{label}</div>
+                                                                <input type={k==='password'?'password':'text'} placeholder={ph} value={newUserForm[k]||''} onChange={e=>setNewUserForm(f=>({...f,[k]:e.target.value}))} style={inputStyle} />
+                                                            </div>
+                                                        ))}
+                                                        <div>
+                                                            <div style={{ fontSize:'11.5px', fontWeight:'700', color:'#6b8099', marginBottom:'8px', textTransform:'uppercase', letterSpacing:'0.06em' }}>Roles</div>
+                                                            <div style={{ display:'flex', gap:'10px' }}>
+                                                                {[['isStaff','Staff'],['isSuperuser','Superuser']].map(([k,label]) => (
+                                                                    <label key={k} style={{ display:'flex', alignItems:'center', gap:'6px', fontSize:'13px', cursor:'pointer', color:'#0d1f2d' }}>
+                                                                        <input type="checkbox" checked={!!newUserForm[k]} onChange={e=>setNewUserForm(f=>({...f,[k]:e.target.checked}))} style={{ accentColor:'#00ABE4' }} />{label}
+                                                                    </label>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div style={{ display:'flex', gap:'10px' }}>
+                                                        <button style={primaryBtnStyle} onClick={() => createUser({ variables: { ...newUserForm, companyId: data?.me?.company?.id } })}>
+                                                            <span style={{ display:'flex', alignItems:'center', gap:'6px' }}><Save size={13} /> Save User</span>
+                                                        </button>
+                                                        <button style={{ ...smallBtnStyle(false), background:'#fff' }} onClick={() => setShowCreateUser(false)}>Cancel</button>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            <div style={adminBodyStyle}>
+                                                {aUsers.length === 0 ? (
+                                                    <div style={{ textAlign:'center', padding:'30px', color:'#94afc5' }}>No users found</div>
+                                                ) : (
+                                                    <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
+                                                        {aUsers.map(u => (
+                                                            <div key={u.id} style={{ display:'flex', alignItems:'center', gap:'14px', padding:'12px 16px', background:'#f4f8fc', borderRadius:'12px', border:'1px solid rgba(0,171,228,0.1)' }}>
+                                                                <div style={{ width:'38px', height:'38px', borderRadius:'10px', background:'linear-gradient(135deg,#00ABE4,#0090c4)', display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontWeight:'700', fontSize:'15px', flexShrink:0 }}>
+                                                                    {(u.firstName||u.username||'?')[0].toUpperCase()}
+                                                                </div>
+                                                                <div style={{ flex:1, minWidth:0 }}>
+                                                                    <div style={{ fontWeight:'600', color:'#0d1f2d', fontSize:'13.5px' }}>{u.firstName} {u.lastName} <span style={{ color:'#94afc5', fontWeight:'400' }}>@{u.username}</span></div>
+                                                                    <div style={{ fontSize:'12px', color:'#6b8099', marginTop:'2px' }}>{u.email}</div>
+                                                                </div>
+                                                                <div style={{ display:'flex', gap:'6px', alignItems:'center', flexShrink:0 }}>
+                                                                    {u.isSuperuser && <span style={{ padding:'2px 8px', borderRadius:'6px', background:'rgba(239,68,68,0.08)', color:'#dc2626', fontSize:'11px', fontWeight:'700' }}>Superuser</span>}
+                                                                    {u.isStaff && !u.isSuperuser && <span style={{ padding:'2px 8px', borderRadius:'6px', background:'rgba(0,171,228,0.1)', color:'#00ABE4', fontSize:'11px', fontWeight:'700' }}>Staff</span>}
+                                                                    {!u.isActive && <span style={{ padding:'2px 8px', borderRadius:'6px', background:'rgba(148,163,184,0.15)', color:'#94a3b8', fontSize:'11px', fontWeight:'700' }}>Inactive</span>}
+                                                                    <button style={smallBtnStyle(false)} title="Toggle active" onClick={() => updateUserAdmin({ variables:{ id:u.id, isActive:!u.isActive } })}>
+                                                                        {u.isActive ? <Unlock size={12} /> : <Lock size={12} />}
+                                                                    </button>
+                                                                    {u.id !== data?.me?.id && (
+                                                                        <button style={smallBtnStyle(true)} title="Delete user" onClick={() => { if(window.confirm(`Delete user ${u.username}?`)) deleteUserMutation({ variables:{ id:u.id } }); }}>
+                                                                            <Trash2 size={12} />
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                        )}
+
+                                        {/* ── DEPARTMENTS ── */}
+                                        {adminTab === 'departments' && (
+                                        <div style={adminCardStyle}>
+                                            <div style={adminHeaderStyle}>
+                                                <div>
+                                                    <div style={{ fontWeight:'700', color:'#0d1f2d', fontSize:'15px' }}>Departments</div>
+                                                    <div style={{ fontSize:'12px', color:'#6b8099', marginTop:'2px' }}>{aDepts.length} departments</div>
+                                                </div>
+                                                <button style={primaryBtnStyle} onClick={() => setShowCreateDept(v=>!v)}>
+                                                    <span style={{ display:'flex', alignItems:'center', gap:'6px' }}><Plus size={14} /> New Department</span>
+                                                </button>
+                                            </div>
+                                            {showCreateDept && (
+                                                <div style={{ padding:'16px 24px', borderBottom:'1px solid rgba(0,171,228,0.1)', background:'rgba(0,171,228,0.02)', display:'flex', gap:'10px', alignItems:'flex-end' }}>
+                                                    <div style={{ flex:1 }}>
+                                                        <div style={{ fontSize:'11.5px', fontWeight:'700', color:'#6b8099', marginBottom:'5px', textTransform:'uppercase', letterSpacing:'0.06em' }}>Department Name</div>
+                                                        <input placeholder="e.g. Engineering" value={newDeptName} onChange={e=>setNewDeptName(e.target.value)} style={inputStyle} />
+                                                    </div>
+                                                    <button style={primaryBtnStyle} onClick={() => createDept({ variables:{ name:newDeptName, companyId:data?.me?.company?.id } })}>
+                                                        <span style={{ display:'flex', alignItems:'center', gap:'6px' }}><Save size={13} /> Save</span>
+                                                    </button>
+                                                    <button style={{ ...smallBtnStyle(false), background:'#fff' }} onClick={() => setShowCreateDept(false)}>Cancel</button>
+                                                </div>
+                                            )}
+                                            <div style={adminBodyStyle}>
+                                                {aDepts.length === 0 ? (
+                                                    <div style={{ textAlign:'center', padding:'30px', color:'#94afc5' }}>No departments yet</div>
+                                                ) : (
+                                                    <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))', gap:'10px' }}>
+                                                        {aDepts.map(d => (
+                                                            <div key={d.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'12px 16px', background:'#f4f8fc', borderRadius:'12px', border:'1px solid rgba(0,171,228,0.1)' }}>
+                                                                <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
+                                                                    <Building size={14} color="#00ABE4" />
+                                                                    <span style={{ fontWeight:'600', color:'#0d1f2d', fontSize:'13.5px' }}>{d.name}</span>
+                                                                </div>
+                                                                <button style={smallBtnStyle(true)} onClick={() => { if(window.confirm(`Delete department ${d.name}?`)) deleteDept({ variables:{ id:d.id } }); }}>
+                                                                    <Trash2 size={12} />
+                                                                </button>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                        )}
+
+                                        {/* ── ROLES & PERMISSIONS ── */}
+                                        {adminTab === 'roles' && (
+                                        <div style={adminCardStyle}>
+                                            <div style={adminHeaderStyle}>
+                                                <div>
+                                                    <div style={{ fontWeight:'700', color:'#0d1f2d', fontSize:'15px' }}>Roles & Permissions</div>
+                                                    <div style={{ fontSize:'12px', color:'#6b8099', marginTop:'2px' }}>{aRoles.length} roles · {aPerms.length} permissions</div>
+                                                </div>
+                                                <button style={primaryBtnStyle} onClick={() => setShowCreateRole(v=>!v)}>
+                                                    <span style={{ display:'flex', alignItems:'center', gap:'6px' }}><Plus size={14} /> New Role</span>
+                                                </button>
+                                            </div>
+                                            {showCreateRole && (
+                                                <div style={{ padding:'16px 24px', borderBottom:'1px solid rgba(0,171,228,0.1)', background:'rgba(0,171,228,0.02)' }}>
+                                                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px', marginBottom:'12px' }}>
+                                                        <div>
+                                                            <div style={{ fontSize:'11.5px', fontWeight:'700', color:'#6b8099', marginBottom:'5px', textTransform:'uppercase', letterSpacing:'0.06em' }}>Role Name</div>
+                                                            <input placeholder="e.g. HR Manager" value={newRoleForm.name} onChange={e=>setNewRoleForm(f=>({...f,name:e.target.value}))} style={inputStyle} />
+                                                        </div>
+                                                        <div>
+                                                            <div style={{ fontSize:'11.5px', fontWeight:'700', color:'#6b8099', marginBottom:'5px', textTransform:'uppercase', letterSpacing:'0.06em' }}>Description</div>
+                                                            <input placeholder="What can this role do?" value={newRoleForm.description} onChange={e=>setNewRoleForm(f=>({...f,description:e.target.value}))} style={inputStyle} />
+                                                        </div>
+                                                    </div>
+                                                    <div style={{ display:'flex', gap:'10px' }}>
+                                                        <button style={primaryBtnStyle} onClick={() => createRole({ variables: newRoleForm })}>
+                                                            <span style={{ display:'flex', alignItems:'center', gap:'6px' }}><Save size={13} /> Save Role</span>
+                                                        </button>
+                                                        <button style={{ ...smallBtnStyle(false), background:'#fff' }} onClick={() => setShowCreateRole(false)}>Cancel</button>
+                                                    </div>
+                                                </div>
+                                            )}
+                                            <div style={adminBodyStyle}>
+                                                {aRoles.length === 0 ? (
+                                                    <div style={{ textAlign:'center', padding:'30px', color:'#94afc5' }}>No roles yet. Run <code style={{ background:'#f4f8fc', padding:'2px 6px', borderRadius:'4px', color:'#00ABE4' }}>setup_permissions --create-roles</code> to seed defaults.</div>
+                                                ) : (
+                                                    <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
+                                                        {aRoles.map(r => (
+                                                            <div key={r.id} style={{ padding:'14px 16px', background:'#f4f8fc', borderRadius:'12px', border:'1px solid rgba(0,171,228,0.1)' }}>
+                                                                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'8px' }}>
+                                                                    <div>
+                                                                        <span style={{ fontWeight:'700', color:'#0d1f2d', fontSize:'13.5px' }}>{r.name}</span>
+                                                                        {r.description && <span style={{ marginLeft:'8px', fontSize:'12px', color:'#6b8099' }}>{r.description}</span>}
+                                                                    </div>
+                                                                    <button style={smallBtnStyle(true)} onClick={() => { if(window.confirm(`Delete role ${r.name}?`)) deleteRole({ variables:{ id:r.id } }); }}>
+                                                                        <Trash2 size={12} />
+                                                                    </button>
+                                                                </div>
+                                                                <div style={{ display:'flex', flexWrap:'wrap', gap:'6px' }}>
+                                                                    {(r.permissions||[]).map(p => (
+                                                                        <span key={p.id} style={{ padding:'2px 8px', borderRadius:'6px', background:'rgba(0,171,228,0.1)', color:'#00ABE4', fontSize:'11px', fontWeight:'600' }}>{p.name}</span>
+                                                                    ))}
+                                                                    {(r.permissions||[]).length === 0 && <span style={{ fontSize:'12px', color:'#94afc5' }}>No permissions assigned</span>}
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                        )}
+
+                                        {/* ── COMPANY ── */}
+                                        {adminTab === 'companies' && (
+                                        <div style={adminCardStyle}>
+                                            <div style={adminHeaderStyle}>
+                                                <div>
+                                                    <div style={{ fontWeight:'700', color:'#0d1f2d', fontSize:'15px' }}>Company Settings</div>
+                                                    <div style={{ fontSize:'12px', color:'#6b8099', marginTop:'2px' }}>{aCompanies.length} {aCompanies.length===1?'company':'companies'}</div>
+                                                </div>
+                                            </div>
+                                            <div style={adminBodyStyle}>
+                                                {aCompanies.length === 0 ? (
+                                                    <div style={{ textAlign:'center', padding:'30px', color:'#94afc5' }}>No companies found</div>
+                                                ) : (
+                                                    <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
+                                                        {aCompanies.map(c => (
+                                                            <div key={c.id} style={{ display:'flex', alignItems:'center', gap:'14px', padding:'14px 18px', background:'#f4f8fc', borderRadius:'12px', border:'1px solid rgba(0,171,228,0.1)' }}>
+                                                                <div style={{ width:'40px', height:'40px', borderRadius:'12px', background:'linear-gradient(135deg,#00ABE4,#0090c4)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                                                                    <Briefcase size={18} color="#fff" />
+                                                                </div>
+                                                                <div style={{ flex:1 }}>
+                                                                    <div style={{ fontWeight:'700', color:'#0d1f2d', fontSize:'14px' }}>{c.name}</div>
+                                                                    <div style={{ fontSize:'12px', color:'#6b8099', marginTop:'2px' }}>{c.email}</div>
+                                                                </div>
+                                                                <span style={{ padding:'4px 10px', borderRadius:'8px', background:'rgba(0,171,228,0.1)', color:'#00ABE4', fontSize:'11.5px', fontWeight:'700' }}>Active</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                        )}
+
+                                    </div>
+                                    );
+                                })()}
 
                                 {settingsTab === 'Security' && (
                                     <div className="glass-card security-section">
