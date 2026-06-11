@@ -79,3 +79,6 @@ config==0.5.1
 
 # ── Image Processing ──────────────────────────────────────────────────────────
 Pillow==10.4.0
+
+# ── Field-level encryption (Jira API token stored encrypted at rest) ──────────
+django-encrypted-model-fields==0.6.5

@@ -34,6 +34,15 @@ ARG VITE_CLIENT_ID=changeme
 ENV VITE_API_BASE=${VITE_API_BASE}
 ENV VITE_CLIENT_ID=${VITE_CLIENT_ID}
 
+# Warn loudly if build args are still at their placeholder defaults.
+# This catches CI/CD pipelines that forgot to pass --build-arg values.
+RUN if [ "${VITE_CLIENT_ID}" = "changeme" ]; then \
+      echo "WARNING: VITE_CLIENT_ID is 'changeme' — pass --build-arg VITE_CLIENT_ID=<your-oauth-client-id>"; \
+    fi && \
+    if [ "${VITE_API_BASE}" = "http://localhost:8000" ]; then \
+      echo "WARNING: VITE_API_BASE is 'localhost:8000' — pass --build-arg VITE_API_BASE=https://your-cloudrun-url.run.app"; \
+    fi
+
 RUN cd /reminder_app/frontend && npm ci --silent && npm run build
 
 # ── Runtime setup ─────────────────────────────────────────────────────────────

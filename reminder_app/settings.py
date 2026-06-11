@@ -413,6 +413,21 @@ RATE_LIMIT_ENABLED = config('RATE_LIMIT_ENABLED', default=True, cast=bool)
 RATE_LIMIT_LOGIN_PER_MINUTE = int(config('RATE_LIMIT_LOGIN_PER_MINUTE', default=5))
 RATE_LIMIT_SIGNUP_PER_MINUTE = int(config('RATE_LIMIT_SIGNUP_PER_MINUTE', default=3))
 
+# ── Field-level encryption (Jira API token) ───────────────────────────────────
+# FIELD_ENCRYPTION_KEY must be a 32-byte Fernet key.
+# Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+# Set in Cloud Run env vars or .env — if not set a stable dev key is derived
+# from SECRET_KEY so local dev works without extra setup.
+_raw_encryption_key = os.environ.get('FIELD_ENCRYPTION_KEY', '')
+if not _raw_encryption_key:
+    # Derive a deterministic key from SECRET_KEY for local dev only.
+    # In production, always set FIELD_ENCRYPTION_KEY explicitly.
+    import base64, hashlib
+    _raw_encryption_key = base64.urlsafe_b64encode(
+        hashlib.sha256(SECRET_KEY.encode()).digest()
+    ).decode()
+FIELD_ENCRYPTION_KEY = _raw_encryption_key
+
 # ── Media files ──────────────────────────────────────────────────────────────
 # On Cloud Run, the local filesystem is ephemeral — all uploads are lost on
 # restart/redeploy. Use Google Cloud Storage when GCS_BUCKET_NAME is set.

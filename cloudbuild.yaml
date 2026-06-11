@@ -1,0 +1,70 @@
+# Google Cloud Build configuration for NotifyHub
+#
+# Required substitution variables (set in Cloud Build trigger or --substitutions flag):
+#   _VITE_API_BASE      — e.g. https://your-service.run.app
+#   _VITE_CLIENT_ID     — OAuth client ID (from Django admin → OAuth2 Provider → Applications)
+#   _IMAGE_NAME         — e.g. gcr.io/YOUR_PROJECT/notifyhub
+#   _REGION             — e.g. us-central1
+#   _SERVICE_NAME       — Cloud Run service name, e.g. notifyhub
+#
+# Usage (manual):
+#   gcloud builds submit \
+#     --substitutions=_VITE_API_BASE=https://your-service.run.app,_VITE_CLIENT_ID=your-client-id,\
+#                     _IMAGE_NAME=gcr.io/your-project/notifyhub,_REGION=us-central1,_SERVICE_NAME=notifyhub
+
+substitutions:
+  _VITE_API_BASE: https://your-service.run.app     # OVERRIDE in trigger
+  _VITE_CLIENT_ID: changeme                         # OVERRIDE in trigger
+  _REGION: us-central1
+  _SERVICE_NAME: notifyhub
+  _IMAGE_NAME: gcr.io/$PROJECT_ID/notifyhub
+
+steps:
+  # ── Step 1: Build the Docker image ──────────────────────────────────────────
+  # Pass VITE_* as build-args so they are baked into the React JS bundle.
+  # Without these, the frontend uses 'changeme' as client_id and
+  # localhost:8000 as the API base — login fails in production.
+  - name: 'gcr.io/cloud-builders/docker'
+    id: build
+    args:
+      - build
+      - '--build-arg'
+      - 'VITE_API_BASE=${_VITE_API_BASE}'
+      - '--build-arg'
+      - 'VITE_CLIENT_ID=${_VITE_CLIENT_ID}'
+      - '-t'
+      - '${_IMAGE_NAME}:$SHORT_SHA'
+      - '-t'
+      - '${_IMAGE_NAME}:latest'
+      - '.'
+
+  # ── Step 2: Push the image ───────────────────────────────────────────────────
+  - name: 'gcr.io/cloud-builders/docker'
+    id: push
+    args:
+      - push
+      - '--all-tags'
+      - '${_IMAGE_NAME}'
+
+  # ── Step 3: Deploy to Cloud Run ──────────────────────────────────────────────
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: deploy
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - '${_SERVICE_NAME}'
+      - '--image'
+      - '${_IMAGE_NAME}:$SHORT_SHA'
+      - '--region'
+      - '${_REGION}'
+      - '--platform'
+      - managed
+      - '--allow-unauthenticated'
+
+images:
+  - '${_IMAGE_NAME}:$SHORT_SHA'
+  - '${_IMAGE_NAME}:latest'
+
+options:
+  logging: CLOUD_LOGGING_ONLY

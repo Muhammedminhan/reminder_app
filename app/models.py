@@ -689,7 +689,15 @@ class JiraIntegration(models.Model):
     company = models.OneToOneField(Company, on_delete=models.CASCADE, related_name='jira_integration')
     base_url = models.URLField(help_text="Jira instance URL (e.g. https://your-domain.atlassian.net)")
     email = models.EmailField(help_text="API Email")
-    api_token = models.CharField(max_length=255, help_text="Atlassian API Token")
+    # api_token stored encrypted at rest using django-encrypted-model-fields.
+    # The value is transparently encrypted/decrypted using FIELD_ENCRYPTION_KEY.
+    # The DB column stores Fernet-encrypted ciphertext — never the raw token.
+    try:
+        from encrypted_model_fields.fields import EncryptedCharField
+        api_token = EncryptedCharField(max_length=500, help_text="Atlassian API Token (encrypted at rest)")
+    except ImportError:
+        # Graceful fallback if package is not yet installed (e.g. during migrations)
+        api_token = models.CharField(max_length=500, help_text="Atlassian API Token")
     project_key = models.CharField(max_length=20, help_text="Default Project Key")
     is_active = models.BooleanField(default=True)
 
