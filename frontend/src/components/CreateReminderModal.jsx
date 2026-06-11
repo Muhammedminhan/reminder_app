@@ -205,6 +205,7 @@ export default function CreateReminderModal({ isOpen, onClose, onSuccess }) {
     });
     const [isUploading, setIsUploading] = useState(false);
     const [showCustomModal, setShowCustomModal] = useState(false);
+    const [deptError, setDeptError] = useState(false);
 
     const [createReminder, { loading }] = useMutation(CREATE_REMINDER, {
         refetchQueries: [{ query: INITIAL_QUERY }],
@@ -260,6 +261,16 @@ export default function CreateReminderModal({ isOpen, onClose, onSuccess }) {
 
     const handleSubmit = (e) => {
         e.preventDefault();
+
+        // Enforce that at least one department option is selected
+        if (!formData.shareAllDepartments && !formData.visibleToDepartment) {
+            setDeptError(true);
+            // Scroll to the Access & Collaboration section
+            document.getElementById('dept-visibility-section')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            return;
+        }
+        setDeptError(false);
+
         const vars = {
             ...formData,
             reminderStartDate: new Date(formData.reminderStartDate).toISOString(),
@@ -455,30 +466,39 @@ export default function CreateReminderModal({ isOpen, onClose, onSuccess }) {
                         <Shield size={14} /> Access & Collaboration
                     </div>
 
-                    {/* ── Department Visibility: two mutually-exclusive options ── */}
-                    <div className="form-row" style={{ alignItems: 'flex-start' }}>
+                    {/* ── Department Visibility: two mutually-exclusive options (REQUIRED) ── */}
+                    <div id="dept-visibility-section" className="form-row" style={{ alignItems: 'flex-start' }}>
 
                         {/* Option A: Share with ALL departments */}
                         <div className="form-group">
-                            <label style={{ marginBottom: '8px' }}>Department Visibility</label>
+                            <label style={{ marginBottom: '8px' }}>
+                                Department Visibility <span style={{ color: '#ef4444' }}>*</span>
+                                {deptError && (
+                                    <span style={{ marginLeft: '8px', fontSize: '11.5px', color: '#ef4444', fontWeight: '500', textTransform: 'none', letterSpacing: 'normal' }}>
+                                        — Please select one option
+                                    </span>
+                                )}
+                            </label>
                             <label className="toggle-label" style={{
                                 display: 'flex', alignItems: 'flex-start', gap: '12px', cursor: 'pointer',
                                 padding: '12px 14px',
                                 background: formData.shareAllDepartments ? 'rgba(0,171,228,0.06)' : 'var(--bg-card)',
                                 borderRadius: 'var(--radius-md)',
-                                border: formData.shareAllDepartments ? '1px solid rgba(0,171,228,0.35)' : '1px solid var(--border)',
+                                border: formData.shareAllDepartments ? '1px solid rgba(0,171,228,0.35)' : deptError ? '1px solid rgba(239,68,68,0.5)' : '1px solid var(--border)',
                                 margin: 0, transition: 'all 0.2s ease'
                             }}>
                                 <input
                                     type="checkbox"
                                     checked={formData.shareAllDepartments}
-                                    onChange={e => setFormData({
-                                        ...formData,
-                                        shareAllDepartments: e.target.checked,
-                                        // mutually exclusive — untick the other one
-                                        visibleToDepartment: e.target.checked ? false : formData.visibleToDepartment,
-                                        selectedDepartmentId: '',
-                                    })}
+                                    onChange={e => {
+                                        setDeptError(false);
+                                        setFormData({
+                                            ...formData,
+                                            shareAllDepartments: e.target.checked,
+                                            visibleToDepartment: e.target.checked ? false : formData.visibleToDepartment,
+                                            selectedDepartmentId: '',
+                                        });
+                                    }}
                                     style={{ width: 'auto', margin: '2px 0 0 0', flexShrink: 0, accentColor: '#00ABE4' }}
                                 />
                                 <div>
@@ -500,19 +520,21 @@ export default function CreateReminderModal({ isOpen, onClose, onSuccess }) {
                                 padding: '12px 14px',
                                 background: formData.visibleToDepartment ? 'rgba(0,171,228,0.06)' : 'var(--bg-card)',
                                 borderRadius: 'var(--radius-md)',
-                                border: formData.visibleToDepartment ? '1px solid rgba(0,171,228,0.35)' : '1px solid var(--border)',
+                                border: formData.visibleToDepartment ? '1px solid rgba(0,171,228,0.35)' : deptError ? '1px solid rgba(239,68,68,0.5)' : '1px solid var(--border)',
                                 margin: 0, transition: 'all 0.2s ease'
                             }}>
                                 <input
                                     type="checkbox"
                                     checked={formData.visibleToDepartment}
-                                    onChange={e => setFormData({
-                                        ...formData,
-                                        visibleToDepartment: e.target.checked,
-                                        // mutually exclusive — untick the other one
-                                        shareAllDepartments: e.target.checked ? false : formData.shareAllDepartments,
-                                        selectedDepartmentId: e.target.checked ? formData.selectedDepartmentId : '',
-                                    })}
+                                    onChange={e => {
+                                        setDeptError(false);
+                                        setFormData({
+                                            ...formData,
+                                            visibleToDepartment: e.target.checked,
+                                            shareAllDepartments: e.target.checked ? false : formData.shareAllDepartments,
+                                            selectedDepartmentId: e.target.checked ? formData.selectedDepartmentId : '',
+                                        });
+                                    }}
                                     style={{ width: 'auto', margin: '2px 0 0 0', flexShrink: 0, accentColor: '#00ABE4' }}
                                 />
                                 <div>
