@@ -10,7 +10,7 @@ from django.contrib.auth import authenticate
 from django.conf import settings
 import requests
 from django.core.cache import cache
-from oauth2_provider.models import AccessToken
+from oauth2_provider.models import AccessToken, Application as OAuthApplication
 from auditlog.models import LogEntry
 
 
@@ -161,6 +161,14 @@ class ScheduledTaskType(DjangoObjectType):
         )
 
 
+class OAuthApplicationType(graphene.ObjectType):
+    id = graphene.ID()
+    name = graphene.String()
+    client_id = graphene.String()
+    client_type = graphene.String()
+    authorization_grant_type = graphene.String()
+
+
 class PermissionType(DjangoObjectType):
     class Meta:
         model = Permission
@@ -291,6 +299,7 @@ class Query(graphene.ObjectType):
     group = graphene.Field(GroupType, id=graphene.ID(required=True))
     reminder_deliveries = graphene.List(ReminderDeliveryType, reminder_id=graphene.ID(required=False))
     jira_integration = graphene.Field(JiraIntegrationType)
+    oauth_applications = graphene.List(OAuthApplicationType)
 
     def resolve_recent_activities(self, info):
         user = get_authenticated_user(info)
@@ -774,6 +783,22 @@ class Query(graphene.ObjectType):
         if not user:
             return None
         return JiraIntegration.objects.filter(company=user.company).first()
+
+    def resolve_oauth_applications(self, info):
+        user = get_authenticated_user(info)
+        if not user or not (user.is_superuser or user.is_staff):
+            return []
+        apps = OAuthApplication.objects.all().order_by('name')
+        return [
+            OAuthApplicationType(
+                id=str(app.pk),
+                name=app.name,
+                client_id=app.client_id,
+                client_type=app.client_type,
+                authorization_grant_type=app.authorization_grant_type,
+            )
+            for app in apps
+        ]
 
 
 class CreateReminder(graphene.Mutation):

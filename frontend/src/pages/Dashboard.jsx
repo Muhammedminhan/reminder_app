@@ -118,6 +118,8 @@ const ADMIN_QUERY = gql`
     departments { id name }
     roles { id name description permissions { id name } }
     permissions { id name code category }
+    reminders { id title receiverEmail active send completed company { name } createdBy { username } reminderStartDate intervalType }
+    oauthApplications { id name clientId clientType authorizationGrantType }
   }
 `;
 
@@ -1376,6 +1378,8 @@ export default function Dashboard() {
                                     const aRoles = adminData?.roles || [];
                                     const aPerms = adminData?.permissions || [];
                                     const aCompanies = adminData?.companies || [];
+                                    const aReminders = adminData?.reminders || [];
+                                    const aOAuthApps = adminData?.oauthApplications || [];
 
                                     const adminCardStyle = { background:'#FFFFFF', border:'1px solid rgba(0,171,228,0.18)', borderRadius:'20px', marginBottom:'24px', overflow:'hidden', boxShadow:'0 2px 12px rgba(0,171,228,0.07)' };
                                     const adminHeaderStyle = { padding:'18px 28px', background:'linear-gradient(135deg,rgba(0,171,228,0.07) 0%,rgba(233,241,250,0.5) 100%)', borderBottom:'1px solid rgba(0,171,228,0.12)', display:'flex', justifyContent:'space-between', alignItems:'center' };
@@ -1388,7 +1392,7 @@ export default function Dashboard() {
                                     <div>
                                         {/* Sub-nav */}
                                         <div style={{ display:'flex', gap:'8px', marginBottom:'24px', flexWrap:'wrap' }}>
-                                            {[['users','Users',Users],['departments','Departments',Building],['roles','Roles & Permissions',Shield],['companies','Company',Briefcase]].map(([k,label,Icon]) => (
+                                            {[['users','Users',Users],['departments','Departments',Building],['roles','Roles & Permissions',Shield],['companies','Company',Briefcase],['reminders','Reminders',Bell],['oauth','OAuth Apps',Key]].map(([k,label,Icon]) => (
                                                 <button key={k} onClick={() => setAdminTab(k)} style={{ display:'flex', alignItems:'center', gap:'6px', padding:'8px 16px', borderRadius:'10px', fontSize:'13px', fontWeight:'600', cursor:'pointer', border:'1.5px solid', borderColor: adminTab===k ? '#00ABE4' : 'rgba(0,171,228,0.2)', background: adminTab===k ? '#00ABE4' : '#fff', color: adminTab===k ? '#fff' : '#3d5a73', transition:'all 0.18s' }}>
                                                     <Icon size={14} />{label}
                                                 </button>
@@ -1605,6 +1609,88 @@ export default function Dashboard() {
                                                                     <div style={{ fontSize:'12px', color:'#6b8099', marginTop:'2px' }}>{c.email}</div>
                                                                 </div>
                                                                 <span style={{ padding:'4px 10px', borderRadius:'8px', background:'rgba(0,171,228,0.1)', color:'#00ABE4', fontSize:'11.5px', fontWeight:'700' }}>Active</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                        )}
+
+                                        {/* ── REMINDERS (admin) ── */}
+                                        {adminTab === 'reminders' && (
+                                        <div style={adminCardStyle}>
+                                            <div style={adminHeaderStyle}>
+                                                <div>
+                                                    <div style={{ fontWeight:'700', color:'#0d1f2d', fontSize:'15px' }}>All Reminders</div>
+                                                    <div style={{ fontSize:'12px', color:'#6b8099', marginTop:'2px' }}>{aReminders.length} total reminders across all companies</div>
+                                                </div>
+                                            </div>
+                                            <div style={adminBodyStyle}>
+                                                {aReminders.length === 0 ? (
+                                                    <div style={{ textAlign:'center', padding:'30px', color:'#94afc5' }}>No reminders found</div>
+                                                ) : (
+                                                    <div style={{ overflowX:'auto' }}>
+                                                        <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'13px' }}>
+                                                            <thead>
+                                                                <tr style={{ background:'rgba(0,171,228,0.05)', borderBottom:'1.5px solid rgba(0,171,228,0.12)' }}>
+                                                                    {['Title','Recipient','Company','Status','Cadence','Created By'].map(h => (
+                                                                        <th key={h} style={{ padding:'10px 14px', textAlign:'left', fontWeight:'700', color:'#3d5a73', fontSize:'12px', whiteSpace:'nowrap' }}>{h}</th>
+                                                                    ))}
+                                                                </tr>
+                                                            </thead>
+                                                            <tbody>
+                                                                {aReminders.map(r => (
+                                                                    <tr key={r.id} style={{ borderBottom:'1px solid rgba(0,171,228,0.07)' }}>
+                                                                        <td style={{ padding:'10px 14px', fontWeight:'600', color:'#0d1f2d', maxWidth:'200px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r.title}</td>
+                                                                        <td style={{ padding:'10px 14px', color:'#3d5a73' }}>{r.receiverEmail}</td>
+                                                                        <td style={{ padding:'10px 14px', color:'#3d5a73' }}>{r.company?.name || '—'}</td>
+                                                                        <td style={{ padding:'10px 14px' }}>
+                                                                            <span style={{ padding:'3px 8px', borderRadius:'6px', fontSize:'11.5px', fontWeight:'700', background: r.completed ? 'rgba(16,185,129,0.1)' : r.active ? 'rgba(0,171,228,0.1)' : 'rgba(239,68,68,0.08)', color: r.completed ? '#059669' : r.active ? '#00ABE4' : '#dc2626' }}>
+                                                                                {r.completed ? 'Completed' : r.active ? 'Active' : 'Inactive'}
+                                                                            </span>
+                                                                        </td>
+                                                                        <td style={{ padding:'10px 14px', color:'#3d5a73', textTransform:'capitalize' }}>{r.intervalType || '—'}</td>
+                                                                        <td style={{ padding:'10px 14px', color:'#3d5a73' }}>{r.createdBy?.username || '—'}</td>
+                                                                    </tr>
+                                                                ))}
+                                                            </tbody>
+                                                        </table>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                        )}
+
+                                        {/* ── OAUTH APPS (admin) ── */}
+                                        {adminTab === 'oauth' && (
+                                        <div style={adminCardStyle}>
+                                            <div style={adminHeaderStyle}>
+                                                <div>
+                                                    <div style={{ fontWeight:'700', color:'#0d1f2d', fontSize:'15px' }}>OAuth Applications</div>
+                                                    <div style={{ fontSize:'12px', color:'#6b8099', marginTop:'2px' }}>{aOAuthApps.length} registered OAuth apps</div>
+                                                </div>
+                                            </div>
+                                            <div style={adminBodyStyle}>
+                                                {aOAuthApps.length === 0 ? (
+                                                    <div style={{ textAlign:'center', padding:'30px', color:'#94afc5' }}>No OAuth applications found</div>
+                                                ) : (
+                                                    <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
+                                                        {aOAuthApps.map(app => (
+                                                            <div key={app.id} style={{ display:'flex', alignItems:'center', gap:'14px', padding:'14px 18px', background:'#f4f8fc', borderRadius:'12px', border:'1px solid rgba(0,171,228,0.1)' }}>
+                                                                <div style={{ width:'40px', height:'40px', borderRadius:'12px', background:'linear-gradient(135deg,#6366f1,#4f46e5)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                                                                    <Key size={18} color="#fff" />
+                                                                </div>
+                                                                <div style={{ flex:1 }}>
+                                                                    <div style={{ fontWeight:'700', color:'#0d1f2d', fontSize:'14px' }}>{app.name || '(unnamed)'}</div>
+                                                                    <div style={{ fontSize:'12px', color:'#6b8099', marginTop:'2px', fontFamily:'monospace' }}>
+                                                                        {app.clientId ? app.clientId.slice(0,8) + '••••••••' + app.clientId.slice(-4) : '—'}
+                                                                    </div>
+                                                                </div>
+                                                                <div style={{ display:'flex', gap:'8px', alignItems:'center' }}>
+                                                                    <span style={{ padding:'3px 8px', borderRadius:'6px', fontSize:'11.5px', fontWeight:'700', background:'rgba(99,102,241,0.1)', color:'#6366f1', textTransform:'capitalize' }}>{app.clientType}</span>
+                                                                    <span style={{ padding:'3px 8px', borderRadius:'6px', fontSize:'11.5px', fontWeight:'700', background:'rgba(0,171,228,0.1)', color:'#00ABE4', textTransform:'capitalize' }}>{(app.authorizationGrantType||'').replace(/-/g,' ')}</span>
+                                                                </div>
                                                             </div>
                                                         ))}
                                                     </div>
