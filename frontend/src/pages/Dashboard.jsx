@@ -117,9 +117,33 @@ const ADMIN_QUERY = gql`
     companies { id name email address website }
     departments { id name company { name } }
     roles { id name description permissions { id name } }
-    permissions { id name code category }
+    permissions { id name code category description isActive }
     reminders { id title receiverEmail active send completed company { name } createdBy { username } reminderStartDate intervalType }
     oauthApplications { id name clientId clientType authorizationGrantType }
+    userRoles { id user { id username email } role { id name } company { name } isActive assignedAt }
+    sendgridDomainAuths { id domain customerId isVerified user { username } createdAt }
+    auditLogs { id actorUsername action objectRepr contentTypeName timestamp }
+    accessTokensAdmin { id userUsername tokenMasked expires scope }
+  }
+`;
+
+const REMOVE_ROLE_FROM_USER = gql`
+  mutation RemoveRoleFromUser($userId: ID!, $roleId: ID!) {
+    removeRoleFromUser(userId: $userId, roleId: $roleId) { ok }
+  }
+`;
+
+const CREATE_PERMISSION = gql`
+  mutation CreatePermission($code: String!, $name: String!, $category: String, $description: String) {
+    createPermission(code: $code, name: $name, category: $category, description: $description) {
+      ok permission { id code name category }
+    }
+  }
+`;
+
+const DELETE_PERMISSION = gql`
+  mutation DeletePermission($id: ID!) {
+    deletePermission(id: $id) { ok }
   }
 `;
 
@@ -422,6 +446,10 @@ export default function Dashboard() {
     const [isAdminUser, setIsAdminUser] = useState(false);
     const [showCreateCompany, setShowCreateCompany] = useState(false);
     const [newCompanyForm, setNewCompanyForm] = useState({ name:'', email:'', address:'', website:'' });
+    const [showAssignRole, setShowAssignRole] = useState(false);
+    const [assignRoleForm, setAssignRoleForm] = useState({ userId:'', roleId:'' });
+    const [showCreatePermission, setShowCreatePermission] = useState(false);
+    const [newPermissionForm, setNewPermissionForm] = useState({ code:'', name:'', category:'', description:'' });
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
     const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
@@ -489,7 +517,10 @@ export default function Dashboard() {
     const [deleteDept] = useMutation(DELETE_DEPT, { onCompleted: () => { refetchAdmin(); showToast('Department deleted'); }});
     const [createRole] = useMutation(CREATE_ROLE, { onCompleted: () => { refetchAdmin(); setShowCreateRole(false); setNewRoleForm({ name:'', description:'' }); showToast('Role created'); }});
     const [deleteRole] = useMutation(DELETE_ROLE, { onCompleted: () => { refetchAdmin(); showToast('Role deleted'); }});
-    const [assignRole] = useMutation(ASSIGN_ROLE, { onCompleted: () => { refetchAdmin(); showToast('Role assigned'); }});
+    const [assignRole] = useMutation(ASSIGN_ROLE, { onCompleted: () => { refetchAdmin(); setShowAssignRole(false); setAssignRoleForm({ userId:'', roleId:'' }); showToast('Role assigned'); }});
+    const [removeRoleFromUser] = useMutation(REMOVE_ROLE_FROM_USER, { onCompleted: () => { refetchAdmin(); showToast('Role removed'); }});
+    const [createPermission] = useMutation(CREATE_PERMISSION, { onCompleted: () => { refetchAdmin(); setShowCreatePermission(false); setNewPermissionForm({ code:'', name:'', category:'', description:'' }); showToast('Permission created'); }});
+    const [deletePermission] = useMutation(DELETE_PERMISSION, { onCompleted: () => { refetchAdmin(); showToast('Permission deleted'); }});
     const [createCompany] = useMutation(CREATE_COMPANY, { onCompleted: () => { refetchAdmin(); setShowCreateCompany(false); setNewCompanyForm({ name:'', email:'', address:'', website:'' }); showToast('Company created'); }});
     const [deleteCompanyMutation] = useMutation(DELETE_COMPANY_MUTATION, { onCompleted: () => { refetchAdmin(); showToast('Company deleted'); }});
 
@@ -1398,6 +1429,10 @@ export default function Dashboard() {
                                     const aCompanies = adminData?.companies || [];
                                     const aReminders = adminData?.reminders || [];
                                     const aOAuthApps = adminData?.oauthApplications || [];
+                                    const aUserRoles = adminData?.userRoles || [];
+                                    const aSendGridAuths = adminData?.sendgridDomainAuths || [];
+                                    const aAuditLogs = adminData?.auditLogs || [];
+                                    const aAccessTokens = adminData?.accessTokensAdmin || [];
 
                                     const adminCardStyle = { background:'#FFFFFF', border:'1px solid rgba(0,171,228,0.18)', borderRadius:'20px', marginBottom:'24px', overflow:'hidden', boxShadow:'0 2px 12px rgba(0,171,228,0.07)' };
                                     const adminHeaderStyle = { padding:'18px 28px', background:'linear-gradient(135deg,rgba(0,171,228,0.07) 0%,rgba(233,241,250,0.5) 100%)', borderBottom:'1px solid rgba(0,171,228,0.12)', display:'flex', justifyContent:'space-between', alignItems:'center' };
@@ -1410,7 +1445,7 @@ export default function Dashboard() {
                                     <div>
                                         {/* Sub-nav */}
                                         <div style={{ display:'flex', gap:'8px', marginBottom:'24px', flexWrap:'wrap' }}>
-                                            {[['users','Users',Users],['departments','Departments',Building],['roles','Roles & Permissions',Shield],['companies','Company',Briefcase],['reminders','Reminders',Bell],['oauth','OAuth Apps',Key]].map(([k,label,Icon]) => (
+                                            {[['users','Users',Users],['departments','Departments',Building],['roles','Roles',Shield],['companies','Company',Briefcase],['reminders','Reminders',Bell],['oauth','OAuth Apps',Key],['userroles','User Roles',Users],['sendgrid','SendGrid',Mail],['auditlog','Audit Log',Activity],['accesstokens','Access Tokens',Key],['permissions','Permissions',Lock]].map(([k,label,Icon]) => (
                                                 <button key={k} onClick={() => setAdminTab(k)} style={{ display:'flex', alignItems:'center', gap:'6px', padding:'8px 16px', borderRadius:'10px', fontSize:'13px', fontWeight:'600', cursor:'pointer', border:'1.5px solid', borderColor: adminTab===k ? '#00ABE4' : 'rgba(0,171,228,0.2)', background: adminTab===k ? '#00ABE4' : '#fff', color: adminTab===k ? '#fff' : '#3d5a73', transition:'all 0.18s' }}>
                                                     <Icon size={14} />{label}
                                                 </button>
@@ -1744,6 +1779,260 @@ export default function Dashboard() {
                                                             </div>
                                                         ))}
                                                     </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                        )}
+
+                                        {/* ── USER ROLES ── */}
+                                        {adminTab === 'userroles' && (
+                                        <div style={adminCardStyle}>
+                                            <div style={adminHeaderStyle}>
+                                                <div>
+                                                    <div style={{ fontWeight:'700', color:'#0d1f2d', fontSize:'15px' }}>User Role Assignments</div>
+                                                    <div style={{ fontSize:'12px', color:'#6b8099', marginTop:'2px' }}>{aUserRoles.length} active assignments</div>
+                                                </div>
+                                                <button style={primaryBtnStyle} onClick={() => setShowAssignRole(v=>!v)}>
+                                                    <span style={{ display:'flex', alignItems:'center', gap:'6px' }}><Shield size={14} /> Assign Role</span>
+                                                </button>
+                                            </div>
+                                            {showAssignRole && (
+                                                <div style={{ padding:'20px 24px', borderBottom:'1px solid rgba(0,171,228,0.1)', background:'rgba(0,171,228,0.02)' }}>
+                                                    <div style={{ fontWeight:'600', color:'#0d1f2d', marginBottom:'14px', fontSize:'13.5px' }}>Assign Role to User</div>
+                                                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px', marginBottom:'12px' }}>
+                                                        <div>
+                                                            <div style={{ fontSize:'11.5px', fontWeight:'700', color:'#6b8099', marginBottom:'5px', textTransform:'uppercase', letterSpacing:'0.06em' }}>User</div>
+                                                            <select value={assignRoleForm.userId} onChange={e=>setAssignRoleForm(f=>({...f,userId:e.target.value}))} style={inputStyle}>
+                                                                <option value="">Select user…</option>
+                                                                {aUsers.map(u => <option key={u.id} value={u.id}>{u.username} ({u.email})</option>)}
+                                                            </select>
+                                                        </div>
+                                                        <div>
+                                                            <div style={{ fontSize:'11.5px', fontWeight:'700', color:'#6b8099', marginBottom:'5px', textTransform:'uppercase', letterSpacing:'0.06em' }}>Role</div>
+                                                            <select value={assignRoleForm.roleId} onChange={e=>setAssignRoleForm(f=>({...f,roleId:e.target.value}))} style={inputStyle}>
+                                                                <option value="">Select role…</option>
+                                                                {aRoles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                                                            </select>
+                                                        </div>
+                                                    </div>
+                                                    <div style={{ display:'flex', gap:'10px' }}>
+                                                        <button style={primaryBtnStyle} onClick={() => { if(assignRoleForm.userId && assignRoleForm.roleId) assignRole({ variables: { userId: assignRoleForm.userId, roleId: assignRoleForm.roleId } }); }}>Assign</button>
+                                                        <button style={smallBtnStyle(false)} onClick={() => setShowAssignRole(false)}>Cancel</button>
+                                                    </div>
+                                                </div>
+                                            )}
+                                            <div style={adminBodyStyle}>
+                                                {aUserRoles.length === 0 ? (
+                                                    <div style={{ textAlign:'center', padding:'30px', color:'#94afc5' }}>No role assignments found</div>
+                                                ) : (
+                                                    <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'13px' }}>
+                                                        <thead>
+                                                            <tr style={{ borderBottom:'2px solid rgba(0,171,228,0.15)' }}>
+                                                                {['User','Role','Company','Status','Assigned At',''].map(h => (
+                                                                    <th key={h} style={{ padding:'8px 12px', textAlign:'left', fontWeight:'700', color:'#6b8099', fontSize:'11.5px', textTransform:'uppercase', letterSpacing:'0.05em' }}>{h}</th>
+                                                                ))}
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {aUserRoles.map(ur => (
+                                                                <tr key={ur.id} style={{ borderBottom:'1px solid rgba(0,171,228,0.07)' }}>
+                                                                    <td style={{ padding:'10px 12px', color:'#0d1f2d' }}>{ur.user?.username}<div style={{ fontSize:'11px', color:'#94afc5' }}>{ur.user?.email}</div></td>
+                                                                    <td style={{ padding:'10px 12px', color:'#0d1f2d', fontWeight:'600' }}>{ur.role?.name}</td>
+                                                                    <td style={{ padding:'10px 12px', color:'#6b8099' }}>{ur.company?.name || '—'}</td>
+                                                                    <td style={{ padding:'10px 12px' }}>
+                                                                        <span style={{ padding:'3px 8px', borderRadius:'6px', fontSize:'11.5px', fontWeight:'700', background: ur.isActive ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)', color: ur.isActive ? '#16a34a' : '#dc2626' }}>{ur.isActive ? 'Active' : 'Inactive'}</span>
+                                                                    </td>
+                                                                    <td style={{ padding:'10px 12px', color:'#6b8099', fontSize:'12px' }}>{ur.assignedAt ? new Date(ur.assignedAt).toLocaleDateString() : '—'}</td>
+                                                                    <td style={{ padding:'10px 12px' }}>
+                                                                        {ur.isActive && <button style={smallBtnStyle(true)} onClick={() => removeRoleFromUser({ variables: { userId: ur.user?.id, roleId: ur.role?.id } })}>Remove</button>}
+                                                                    </td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                )}
+                                            </div>
+                                        </div>
+                                        )}
+
+                                        {/* ── SENDGRID ── */}
+                                        {adminTab === 'sendgrid' && (
+                                        <div style={adminCardStyle}>
+                                            <div style={adminHeaderStyle}>
+                                                <div>
+                                                    <div style={{ fontWeight:'700', color:'#0d1f2d', fontSize:'15px' }}>SendGrid Domain Auths</div>
+                                                    <div style={{ fontSize:'12px', color:'#6b8099', marginTop:'2px' }}>{aSendGridAuths.length} domain authentication records</div>
+                                                </div>
+                                            </div>
+                                            <div style={adminBodyStyle}>
+                                                {aSendGridAuths.length === 0 ? (
+                                                    <div style={{ textAlign:'center', padding:'30px', color:'#94afc5' }}>No SendGrid domain auths found</div>
+                                                ) : (
+                                                    <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'13px' }}>
+                                                        <thead>
+                                                            <tr style={{ borderBottom:'2px solid rgba(0,171,228,0.15)' }}>
+                                                                {['Domain','Customer ID','Verified','User','Created At'].map(h => (
+                                                                    <th key={h} style={{ padding:'8px 12px', textAlign:'left', fontWeight:'700', color:'#6b8099', fontSize:'11.5px', textTransform:'uppercase', letterSpacing:'0.05em' }}>{h}</th>
+                                                                ))}
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {aSendGridAuths.map(sg => (
+                                                                <tr key={sg.id} style={{ borderBottom:'1px solid rgba(0,171,228,0.07)' }}>
+                                                                    <td style={{ padding:'10px 12px', color:'#0d1f2d', fontWeight:'600', fontFamily:'monospace' }}>{sg.domain}</td>
+                                                                    <td style={{ padding:'10px 12px', color:'#6b8099', fontFamily:'monospace', fontSize:'12px' }}>{sg.customerId || '—'}</td>
+                                                                    <td style={{ padding:'10px 12px' }}>
+                                                                        <span style={{ padding:'3px 8px', borderRadius:'6px', fontSize:'11.5px', fontWeight:'700', background: sg.isVerified ? 'rgba(34,197,94,0.1)' : 'rgba(251,191,36,0.1)', color: sg.isVerified ? '#16a34a' : '#d97706' }}>{sg.isVerified ? 'Verified' : 'Pending'}</span>
+                                                                    </td>
+                                                                    <td style={{ padding:'10px 12px', color:'#6b8099' }}>{sg.user?.username || '—'}</td>
+                                                                    <td style={{ padding:'10px 12px', color:'#6b8099', fontSize:'12px' }}>{sg.createdAt ? new Date(sg.createdAt).toLocaleDateString() : '—'}</td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                )}
+                                            </div>
+                                        </div>
+                                        )}
+
+                                        {/* ── AUDIT LOG ── */}
+                                        {adminTab === 'auditlog' && (
+                                        <div style={adminCardStyle}>
+                                            <div style={adminHeaderStyle}>
+                                                <div>
+                                                    <div style={{ fontWeight:'700', color:'#0d1f2d', fontSize:'15px' }}>Audit Log</div>
+                                                    <div style={{ fontSize:'12px', color:'#6b8099', marginTop:'2px' }}>Last {aAuditLogs.length} entries — read only</div>
+                                                </div>
+                                            </div>
+                                            <div style={adminBodyStyle}>
+                                                {aAuditLogs.length === 0 ? (
+                                                    <div style={{ textAlign:'center', padding:'30px', color:'#94afc5' }}>No audit log entries found</div>
+                                                ) : (
+                                                    <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'13px' }}>
+                                                        <thead>
+                                                            <tr style={{ borderBottom:'2px solid rgba(0,171,228,0.15)' }}>
+                                                                {['Actor','Action','Object','Type','Timestamp'].map(h => (
+                                                                    <th key={h} style={{ padding:'8px 12px', textAlign:'left', fontWeight:'700', color:'#6b8099', fontSize:'11.5px', textTransform:'uppercase', letterSpacing:'0.05em' }}>{h}</th>
+                                                                ))}
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {aAuditLogs.map(log => {
+                                                                const actionColors = { 0: { bg:'rgba(34,197,94,0.1)', color:'#16a34a', label:'Create' }, 1: { bg:'rgba(59,130,246,0.1)', color:'#2563eb', label:'Update' }, 2: { bg:'rgba(239,68,68,0.1)', color:'#dc2626', label:'Delete' } };
+                                                                const ac = actionColors[log.action] || { bg:'rgba(0,171,228,0.1)', color:'#00ABE4', label:'Other' };
+                                                                return (
+                                                                    <tr key={log.id} style={{ borderBottom:'1px solid rgba(0,171,228,0.07)' }}>
+                                                                        <td style={{ padding:'10px 12px', color:'#0d1f2d', fontWeight:'600' }}>{log.actorUsername}</td>
+                                                                        <td style={{ padding:'10px 12px' }}><span style={{ padding:'3px 8px', borderRadius:'6px', fontSize:'11.5px', fontWeight:'700', background:ac.bg, color:ac.color }}>{ac.label}</span></td>
+                                                                        <td style={{ padding:'10px 12px', color:'#0d1f2d', maxWidth:'200px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{log.objectRepr}</td>
+                                                                        <td style={{ padding:'10px 12px', color:'#6b8099' }}>{log.contentTypeName}</td>
+                                                                        <td style={{ padding:'10px 12px', color:'#6b8099', fontSize:'12px' }}>{log.timestamp ? new Date(log.timestamp).toLocaleString() : '—'}</td>
+                                                                    </tr>
+                                                                );
+                                                            })}
+                                                        </tbody>
+                                                    </table>
+                                                )}
+                                            </div>
+                                        </div>
+                                        )}
+
+                                        {/* ── ACCESS TOKENS ── */}
+                                        {adminTab === 'accesstokens' && (
+                                        <div style={adminCardStyle}>
+                                            <div style={adminHeaderStyle}>
+                                                <div>
+                                                    <div style={{ fontWeight:'700', color:'#0d1f2d', fontSize:'15px' }}>OAuth Access Tokens</div>
+                                                    <div style={{ fontSize:'12px', color:'#6b8099', marginTop:'2px' }}>{aAccessTokens.length} tokens — read only</div>
+                                                </div>
+                                            </div>
+                                            <div style={adminBodyStyle}>
+                                                {aAccessTokens.length === 0 ? (
+                                                    <div style={{ textAlign:'center', padding:'30px', color:'#94afc5' }}>No access tokens found</div>
+                                                ) : (
+                                                    <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'13px' }}>
+                                                        <thead>
+                                                            <tr style={{ borderBottom:'2px solid rgba(0,171,228,0.15)' }}>
+                                                                {['User','Token','Expires','Scope'].map(h => (
+                                                                    <th key={h} style={{ padding:'8px 12px', textAlign:'left', fontWeight:'700', color:'#6b8099', fontSize:'11.5px', textTransform:'uppercase', letterSpacing:'0.05em' }}>{h}</th>
+                                                                ))}
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {aAccessTokens.map(tok => (
+                                                                <tr key={tok.id} style={{ borderBottom:'1px solid rgba(0,171,228,0.07)' }}>
+                                                                    <td style={{ padding:'10px 12px', color:'#0d1f2d', fontWeight:'600' }}>{tok.userUsername}</td>
+                                                                    <td style={{ padding:'10px 12px', fontFamily:'monospace', color:'#6b8099', fontSize:'12px' }}>{tok.tokenMasked}</td>
+                                                                    <td style={{ padding:'10px 12px', color:'#6b8099', fontSize:'12px' }}>{tok.expires ? new Date(tok.expires).toLocaleString() : '—'}</td>
+                                                                    <td style={{ padding:'10px 12px', color:'#6b8099', fontSize:'12px' }}>{tok.scope || '—'}</td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                )}
+                                            </div>
+                                        </div>
+                                        )}
+
+                                        {/* ── PERMISSIONS ── */}
+                                        {adminTab === 'permissions' && (
+                                        <div style={adminCardStyle}>
+                                            <div style={adminHeaderStyle}>
+                                                <div>
+                                                    <div style={{ fontWeight:'700', color:'#0d1f2d', fontSize:'15px' }}>Permissions</div>
+                                                    <div style={{ fontSize:'12px', color:'#6b8099', marginTop:'2px' }}>{aPerms.length} permissions defined</div>
+                                                </div>
+                                                <button style={primaryBtnStyle} onClick={() => setShowCreatePermission(v=>!v)}>
+                                                    <span style={{ display:'flex', alignItems:'center', gap:'6px' }}><Lock size={14} /> Create Permission</span>
+                                                </button>
+                                            </div>
+                                            {showCreatePermission && (
+                                                <div style={{ padding:'20px 24px', borderBottom:'1px solid rgba(0,171,228,0.1)', background:'rgba(0,171,228,0.02)' }}>
+                                                    <div style={{ fontWeight:'600', color:'#0d1f2d', marginBottom:'14px', fontSize:'13.5px' }}>New Permission</div>
+                                                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px', marginBottom:'12px' }}>
+                                                        {[['code','Code','e.g. users.manage_roles'],['name','Name','Human-readable name'],['category','Category','e.g. Users'],['description','Description','Optional description']].map(([k,label,ph]) => (
+                                                            <div key={k}>
+                                                                <div style={{ fontSize:'11.5px', fontWeight:'700', color:'#6b8099', marginBottom:'5px', textTransform:'uppercase', letterSpacing:'0.06em' }}>{label}</div>
+                                                                <input placeholder={ph} value={newPermissionForm[k]||''} onChange={e=>setNewPermissionForm(f=>({...f,[k]:e.target.value}))} style={inputStyle} />
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                    <div style={{ display:'flex', gap:'10px' }}>
+                                                        <button style={primaryBtnStyle} onClick={() => { if(newPermissionForm.code && newPermissionForm.name) createPermission({ variables: { code: newPermissionForm.code, name: newPermissionForm.name, category: newPermissionForm.category, description: newPermissionForm.description } }); }}>Create</button>
+                                                        <button style={smallBtnStyle(false)} onClick={() => setShowCreatePermission(false)}>Cancel</button>
+                                                    </div>
+                                                </div>
+                                            )}
+                                            <div style={adminBodyStyle}>
+                                                {aPerms.length === 0 ? (
+                                                    <div style={{ textAlign:'center', padding:'30px', color:'#94afc5' }}>No permissions found</div>
+                                                ) : (
+                                                    <table style={{ width:'100%', borderCollapse:'collapse', fontSize:'13px' }}>
+                                                        <thead>
+                                                            <tr style={{ borderBottom:'2px solid rgba(0,171,228,0.15)' }}>
+                                                                {['Code','Name','Category','Status',''].map(h => (
+                                                                    <th key={h} style={{ padding:'8px 12px', textAlign:'left', fontWeight:'700', color:'#6b8099', fontSize:'11.5px', textTransform:'uppercase', letterSpacing:'0.05em' }}>{h}</th>
+                                                                ))}
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {aPerms.map(p => (
+                                                                <tr key={p.id} style={{ borderBottom:'1px solid rgba(0,171,228,0.07)' }}>
+                                                                    <td style={{ padding:'10px 12px', fontFamily:'monospace', color:'#0d1f2d', fontSize:'12px' }}>{p.code}</td>
+                                                                    <td style={{ padding:'10px 12px', color:'#0d1f2d', fontWeight:'600' }}>{p.name}</td>
+                                                                    <td style={{ padding:'10px 12px' }}>
+                                                                        <span style={{ padding:'3px 8px', borderRadius:'6px', fontSize:'11.5px', fontWeight:'700', background:'rgba(0,171,228,0.1)', color:'#00ABE4' }}>{p.category || '—'}</span>
+                                                                    </td>
+                                                                    <td style={{ padding:'10px 12px' }}>
+                                                                        <span style={{ padding:'3px 8px', borderRadius:'6px', fontSize:'11.5px', fontWeight:'700', background: p.isActive !== false ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)', color: p.isActive !== false ? '#16a34a' : '#dc2626' }}>{p.isActive !== false ? 'Active' : 'Inactive'}</span>
+                                                                    </td>
+                                                                    <td style={{ padding:'10px 12px' }}>
+                                                                        <button style={smallBtnStyle(true)} onClick={() => { if(window.confirm('Delete this permission?')) deletePermission({ variables: { id: p.id } }); }}>Delete</button>
+                                                                    </td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
                                                 )}
                                             </div>
                                         </div>

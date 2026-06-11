@@ -266,6 +266,23 @@ class SlackStatusType(graphene.ObjectType):
     channels = graphene.List(SlackChannelType)
 
 
+class AuditLogType(graphene.ObjectType):
+    id = graphene.ID()
+    actor_username = graphene.String()
+    action = graphene.Int()
+    object_repr = graphene.String()
+    content_type_name = graphene.String()
+    timestamp = graphene.String()
+
+
+class AccessTokenAdminType(graphene.ObjectType):
+    id = graphene.ID()
+    user_username = graphene.String()
+    token_masked = graphene.String()
+    expires = graphene.String()
+    scope = graphene.String()
+
+
 class Query(graphene.ObjectType):
     me = graphene.Field(UserType)
     users = graphene.List(UserType)
@@ -301,6 +318,8 @@ class Query(graphene.ObjectType):
     reminder_deliveries = graphene.List(ReminderDeliveryType, reminder_id=graphene.ID(required=False))
     jira_integration = graphene.Field(JiraIntegrationType)
     oauth_applications = graphene.List(OAuthApplicationType)
+    audit_logs = graphene.List(AuditLogType, limit=graphene.Int(required=False))
+    access_tokens_admin = graphene.List(AccessTokenAdminType)
 
     def resolve_recent_activities(self, info):
         user = get_authenticated_user(info)
@@ -800,6 +819,43 @@ class Query(graphene.ObjectType):
             )
             for app in apps
         ]
+
+    def resolve_audit_logs(self, info, limit=50):
+        user = get_authenticated_user(info)
+        if not user or not (user.is_superuser or user.is_staff):
+            return []
+        from auditlog.models import LogEntry
+        logs = LogEntry.objects.select_related('actor', 'content_type').order_by('-timestamp')[:limit]
+        result = []
+        for log in logs:
+            result.append(AuditLogType(
+                id=str(log.id),
+                actor_username=log.actor.username if log.actor else 'System',
+                action=log.action,
+                object_repr=log.object_repr,
+                content_type_name=log.content_type.model.title() if log.content_type else '',
+                timestamp=str(log.timestamp),
+            ))
+        return result
+
+    def resolve_access_tokens_admin(self, info):
+        user = get_authenticated_user(info)
+        if not user or not (user.is_superuser or user.is_staff):
+            return []
+        from django.utils import timezone
+        tokens = AccessToken.objects.select_related('user').order_by('-expires')[:100]
+        result = []
+        for tok in tokens:
+            raw = tok.token or ''
+            masked = raw[:8] + '••••' if len(raw) > 8 else raw
+            result.append(AccessTokenAdminType(
+                id=str(tok.pk),
+                user_username=tok.user.username if tok.user else '—',
+                token_masked=masked,
+                expires=str(tok.expires),
+                scope=tok.scope or '',
+            ))
+        return result
 
 
 class CreateReminder(graphene.Mutation):
