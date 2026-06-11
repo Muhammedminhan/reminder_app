@@ -263,7 +263,11 @@ export default function CreateReminderModal({ isOpen, onClose, onSuccess }) {
         const vars = {
             ...formData,
             reminderStartDate: new Date(formData.reminderStartDate).toISOString(),
-            attachmentIds: formData.attachments.map(a => a.id)
+            attachmentIds: formData.attachments.map(a => a.id),
+            // Map the two department checkboxes to the backend Boolean field:
+            //   "Share with all departments" OR "Share with my department" → true
+            //   Neither ticked → false (reminder stays private)
+            visibleToDepartment: formData.shareAllDepartments || formData.visibleToDepartment,
         };
 
         if (formData.intervalType === 'custom') {
@@ -276,12 +280,14 @@ export default function CreateReminderModal({ isOpen, onClose, onSuccess }) {
                 vars.reminderEndDate = new Date(formData.customRecurrence.endDate).toISOString();
             }
         }
+
+        // Remove frontend-only fields that don't exist in the GraphQL mutation
         delete vars.customRecurrence;
         delete vars.attachments;
+        delete vars.shareAllDepartments;   // UI-only — mapped to visibleToDepartment above
+        delete vars.selectedDepartmentId;  // UI-only — backend uses creator's own department
 
-        createReminder({
-            variables: vars
-        });
+        createReminder({ variables: vars });
     };
 
     const handleFileChange = async (e) => {
