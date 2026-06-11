@@ -43,8 +43,9 @@ class UserType(DjangoObjectType):
     class Meta:
         model = get_user_model()
         fields = (
-            'id', 'username', 'email', 'first_name', 'last_name', 
-            'company', 'departments', 'is_active', 'date_joined', 'profile_picture',
+            'id', 'username', 'email', 'first_name', 'last_name',
+            'is_superuser', 'is_staff', 'is_active',
+            'company', 'departments', 'date_joined', 'profile_picture',
             'slack_user_id', 'manager', 'subordinates',
         )
     
