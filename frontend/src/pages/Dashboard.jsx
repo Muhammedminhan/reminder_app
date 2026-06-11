@@ -402,15 +402,8 @@ export default function Dashboard() {
     const [newUserForm, setNewUserForm] = useState({ username:'', email:'', password:'', firstName:'', lastName:'', isStaff:false, isSuperuser:false });
     const [newDeptName, setNewDeptName] = useState('');
     const [newRoleForm, setNewRoleForm] = useState({ name:'', description:'' });
-    const { data: adminData, refetch: refetchAdmin } = useQuery(ADMIN_QUERY, { skip: !data?.me?.isSuperuser && !data?.me?.isStaff });
-    const [createUser] = useMutation(CREATE_USER, { onCompleted: () => { refetchAdmin(); setShowCreateUser(false); setNewUserForm({ username:'', email:'', password:'', firstName:'', lastName:'', isStaff:false, isSuperuser:false }); showToast('User created'); }});
-    const [deleteUserMutation] = useMutation(DELETE_USER_MUTATION, { onCompleted: () => { refetchAdmin(); showToast('User deleted'); }});
-    const [updateUserAdmin] = useMutation(UPDATE_USER_ADMIN, { onCompleted: () => { refetchAdmin(); showToast('User updated'); }});
-    const [createDept] = useMutation(CREATE_DEPT, { onCompleted: () => { refetchAdmin(); setShowCreateDept(false); setNewDeptName(''); showToast('Department created'); }});
-    const [deleteDept] = useMutation(DELETE_DEPT, { onCompleted: () => { refetchAdmin(); showToast('Department deleted'); }});
-    const [createRole] = useMutation(CREATE_ROLE, { onCompleted: () => { refetchAdmin(); setShowCreateRole(false); setNewRoleForm({ name:'', description:'' }); showToast('Role created'); }});
-    const [deleteRole] = useMutation(DELETE_ROLE, { onCompleted: () => { refetchAdmin(); showToast('Role deleted'); }});
-    const [assignRole] = useMutation(ASSIGN_ROLE, { onCompleted: () => { refetchAdmin(); showToast('Role assigned'); }});
+    // adminData query and admin mutations — declared here but skip logic uses isAdmin state set after INITIAL_QUERY
+    const [isAdminUser, setIsAdminUser] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
     const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
@@ -461,6 +454,24 @@ export default function Dashboard() {
             showToast('Sync Error: ' + error.message);
         }
     }, [error]);
+
+    // Set admin flag once me data loads
+    useEffect(() => {
+        if (data?.me) {
+            setIsAdminUser(!!data.me.isSuperuser || !!data.me.isStaff);
+        }
+    }, [data?.me]);
+
+    // ── Admin query + mutations (safe to declare here — after INITIAL_QUERY) ──
+    const { data: adminData, refetch: refetchAdmin } = useQuery(ADMIN_QUERY, { skip: !isAdminUser });
+    const [createUser] = useMutation(CREATE_USER, { onCompleted: () => { refetchAdmin(); setShowCreateUser(false); setNewUserForm({ username:'', email:'', password:'', firstName:'', lastName:'', isStaff:false, isSuperuser:false }); showToast('User created'); }});
+    const [deleteUserMutation] = useMutation(DELETE_USER_MUTATION, { onCompleted: () => { refetchAdmin(); showToast('User deleted'); }});
+    const [updateUserAdmin] = useMutation(UPDATE_USER_ADMIN, { onCompleted: () => { refetchAdmin(); showToast('User updated'); }});
+    const [createDept] = useMutation(CREATE_DEPT, { onCompleted: () => { refetchAdmin(); setShowCreateDept(false); setNewDeptName(''); showToast('Department created'); }});
+    const [deleteDept] = useMutation(DELETE_DEPT, { onCompleted: () => { refetchAdmin(); showToast('Department deleted'); }});
+    const [createRole] = useMutation(CREATE_ROLE, { onCompleted: () => { refetchAdmin(); setShowCreateRole(false); setNewRoleForm({ name:'', description:'' }); showToast('Role created'); }});
+    const [deleteRole] = useMutation(DELETE_ROLE, { onCompleted: () => { refetchAdmin(); showToast('Role deleted'); }});
+    const [assignRole] = useMutation(ASSIGN_ROLE, { onCompleted: () => { refetchAdmin(); showToast('Role assigned'); }});
 
     const [updateReminder] = useMutation(UPDATE_REMINDER, {
         refetchQueries: [{ query: INITIAL_QUERY }]
@@ -1044,7 +1055,7 @@ export default function Dashboard() {
                             </div>
 
                             <div className="settings-nav">
-                                {['Profile', 'Team', 'Security', 'Integration', ...(data?.me?.isSuperuser || data?.me?.isStaff ? ['Admin'] : [])].map(tab => (
+                                {['Profile', 'Team', 'Security', 'Integration', ...(isAdminUser ? ['Admin'] : [])].map(tab => (
                                     <button key={tab} className={settingsTab === tab ? 'active' : ''} onClick={() => setSettingsTab(tab)}>
                                         {tab === 'Admin' ? <span style={{ display:'flex', alignItems:'center', gap:'5px' }}><Crown size={12} />{tab}</span> : tab}
                                     </button>
@@ -1359,7 +1370,7 @@ export default function Dashboard() {
                                 )}
 
                                 {/* ══ ADMIN TAB ══════════════════════════════════════════════ */}
-                                {settingsTab === 'Admin' && (data?.me?.isSuperuser || data?.me?.isStaff) && (() => {
+                                {settingsTab === 'Admin' && isAdminUser && (() => {
                                     const aUsers = adminData?.users || [];
                                     const aDepts = adminData?.departments || [];
                                     const aRoles = adminData?.roles || [];
