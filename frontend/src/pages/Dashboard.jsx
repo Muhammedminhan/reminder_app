@@ -782,18 +782,21 @@ export default function Dashboard() {
                 </div>
             </aside>
 
-            <main className="main-content" style={{ position:'relative' }}>
-                {/* Top-right controls — absolutely positioned, no overlap */}
-                <div style={{ position:'absolute', top:'16px', right:'48px', zIndex:50, display:'flex', alignItems:'center', gap:'12px' }}>
-                    {activeView !== 'dashboard' && (
-                        <button className="back-button animate-fade" onClick={() => setActiveView('dashboard')} title="Go Back" style={{ marginRight:'8px' }}>
-                            <ChevronLeft size={20} />
-                        </button>
-                    )}
-                    <div className="theme-toggle">
-                        <button onClick={() => setIsDarkMode(false)} className={!isDarkMode ? 'active' : ''}><Sun size={18} /></button>
-                        <button onClick={() => setIsDarkMode(true)} className={isDarkMode ? 'active' : ''}><Moon size={18} /></button>
+            <main className="main-content">
+                {/* Slim top bar — just back button + theme toggle + bell */}
+                <div className="main-header">
+                    <div className="header-content-left">
+                        {activeView !== 'dashboard' && (
+                            <button className="back-button animate-fade" onClick={() => setActiveView('dashboard')} title="Go Back">
+                                <ChevronLeft size={20} />
+                            </button>
+                        )}
                     </div>
+                    <div className="header-actions">
+                        <div className="theme-toggle">
+                            <button onClick={() => setIsDarkMode(false)} className={!isDarkMode ? 'active' : ''}><Sun size={18} /></button>
+                            <button onClick={() => setIsDarkMode(true)} className={isDarkMode ? 'active' : ''}><Moon size={18} /></button>
+                        </div>
                     <div className="notification-bell">
                         <button onClick={() => setShowNotifications(!showNotifications)}>
                             <Bell size={20} />
@@ -837,6 +840,7 @@ export default function Dashboard() {
                                 </div>
                             )}
                         </div>
+                    </div>
                 </div>
 
                 <div className="content-body animate-fade">
