@@ -123,9 +123,10 @@
 .dashboard-container .submenu-icon { color: #4a7a9b !important; }
 
 /* Top header — dark */
+/* Dark mode — header matches dark page bg */
 .dashboard-container .main-header {
-  background: #E9F1FA !important;
-  border-bottom: none !important;
+  background: #06111a !important;
+  border-bottom: 1px solid rgba(0,171,228,0.15) !important;
   backdrop-filter: none !important;
   box-shadow: none !important;
 }
@@ -414,7 +415,7 @@ body:not(.light-mode) .dashboard-container .avatar-placeholder { color: #00ABE4 
 }
 .light-mode .dashboard-container .main-header {
   background: #E9F1FA !important;
-  border-bottom: none !important;
+  border-bottom: 1px solid rgba(0,171,228,0.12) !important;
   backdrop-filter: none !important;
   box-shadow: none !important;
   padding: 8px 48px !important;
@@ -4069,22 +4070,42 @@ body:not(.light-mode) .jira-config-form .toggle-label { color: #e2f4fb !importan
 }
 
 
-/* Icons on light blue header bar — match dashboard bg */
+/* Icons — dark mode header */
 .dashboard-container .main-header .theme-toggle {
-  background: #FFFFFF !important;
-  border: 1.5px solid rgba(0,171,228,0.2) !important;
+  background: rgba(0,171,228,0.1) !important;
+  border: 1.5px solid rgba(0,171,228,0.25) !important;
 }
-.dashboard-container .main-header .theme-toggle button { color: #6b8099 !important; }
+.dashboard-container .main-header .theme-toggle button { color: #7ab3cc !important; }
 .dashboard-container .main-header .theme-toggle button.active {
-  background: #E9F1FA !important;
+  background: rgba(0,171,228,0.2) !important;
   color: #00ABE4 !important;
 }
 .dashboard-container .main-header .notification-bell button {
+  background: rgba(0,171,228,0.1) !important;
+  border: 1.5px solid rgba(0,171,228,0.25) !important;
+  color: #7ab3cc !important;
+}
+.dashboard-container .main-header .back-button {
+  background: rgba(0,171,228,0.1) !important;
+  border: 1.5px solid rgba(0,171,228,0.25) !important;
+  color: #7ab3cc !important;
+}
+
+/* Icons — light mode header */
+.light-mode .dashboard-container .main-header .theme-toggle {
+  background: #FFFFFF !important;
+  border: 1.5px solid rgba(0,171,228,0.2) !important;
+}
+.light-mode .dashboard-container .main-header .theme-toggle button { color: #6b8099 !important; }
+.light-mode .dashboard-container .main-header .theme-toggle button.active {
+  background: #E9F1FA !important; color: #00ABE4 !important;
+}
+.light-mode .dashboard-container .main-header .notification-bell button {
   background: #FFFFFF !important;
   border: 1.5px solid rgba(0,171,228,0.2) !important;
   color: #3d5a73 !important;
 }
-.dashboard-container .main-header .back-button {
+.light-mode .dashboard-container .main-header .back-button {
   background: #FFFFFF !important;
   border: 1.5px solid rgba(0,171,228,0.2) !important;
   color: #3d5a73 !important;
