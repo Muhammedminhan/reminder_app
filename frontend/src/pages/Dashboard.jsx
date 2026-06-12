@@ -783,29 +783,24 @@ export default function Dashboard() {
             </aside>
 
             <main className="main-content">
-                <header className="main-header">
-                    <div className="header-content-left">
-                        {activeView !== 'dashboard' && (
-                            <button
-                                className="back-button animate-fade"
-                                onClick={() => setActiveView('dashboard')}
-                                title="Go Back to Dashboard"
-                            >
-                                <ChevronLeft size={20} />
-                            </button>
-                        )}
-                    </div>
-                    <div className="header-actions">
+                {/* Floating action bar — right-aligned, no background strip */}
+                <div style={{ position:'sticky', top:0, zIndex:40, display:'flex', justifyContent:'flex-end', alignItems:'center', gap:'12px', padding:'10px 48px', pointerEvents:'none' }}>
+                    {activeView !== 'dashboard' && (
+                        <button className="back-button animate-fade" onClick={() => setActiveView('dashboard')} title="Go Back" style={{ pointerEvents:'all', marginRight:'auto' }}>
+                            <ChevronLeft size={20} />
+                        </button>
+                    )}
+                    <div style={{ pointerEvents:'all' }}>
                         <div className="theme-toggle">
                             <button onClick={() => setIsDarkMode(false)} className={!isDarkMode ? 'active' : ''}><Sun size={18} /></button>
                             <button onClick={() => setIsDarkMode(true)} className={isDarkMode ? 'active' : ''}><Moon size={18} /></button>
                         </div>
-
-                        <div className="notification-bell">
-                            <button onClick={() => setShowNotifications(!showNotifications)}>
-                                <Bell size={20} />
-                                {notifications.length > 0 && <span className="notification-dot" />}
-                            </button>
+                    </div>
+                    <div className="notification-bell" style={{ pointerEvents:'all' }}>
+                        <button onClick={() => setShowNotifications(!showNotifications)}>
+                            <Bell size={20} />
+                            {notifications.length > 0 && <span className="notification-dot" />}
+                        </button>
                             {showNotifications && (
                                 <div className="notification-dropdown glass-card animate-fade">
                                     <div className="dropdown-header">
@@ -844,10 +839,9 @@ export default function Dashboard() {
                                 </div>
                             )}
                         </div>
-                    </div>
-                </header>
+                </div>
 
-                <div className="content-body animate-fade">
+                <div className="content-body animate-fade" style={{ marginTop: '-52px' }}>
                     {activeView === 'dashboard' && (
                         <>
                             <div className="welcome-banner">
