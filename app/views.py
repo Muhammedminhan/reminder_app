@@ -56,7 +56,8 @@ def _check_webhook_auth(request):
     """Return (ok, error_response) for webhook endpoints.
     Validates token and applies per-IP rate limiting (10 req/min).
     """
-    expected = os.environ.get('WEBHOOK_TOKEN')
+    from decouple import config as _cfg
+    expected = _cfg('WEBHOOK_TOKEN', default='')
     token = request.headers.get('X-Webhook-Token') or request.POST.get('token')
     if not expected or token != expected:
         return False, JsonResponse({"status": "error", "message": "Unauthorized"}, status=401)
