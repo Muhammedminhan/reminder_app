@@ -782,21 +782,19 @@ export default function Dashboard() {
                 </div>
             </aside>
 
-            <main className="main-content">
-                {/* Floating action bar — right-aligned, no background strip */}
-                <div style={{ position:'sticky', top:0, zIndex:40, display:'flex', justifyContent:'flex-end', alignItems:'center', gap:'12px', padding:'10px 48px', pointerEvents:'none' }}>
+            <main className="main-content" style={{ position:'relative' }}>
+                {/* Top-right controls — absolutely positioned, no overlap */}
+                <div style={{ position:'absolute', top:'16px', right:'48px', zIndex:50, display:'flex', alignItems:'center', gap:'12px' }}>
                     {activeView !== 'dashboard' && (
-                        <button className="back-button animate-fade" onClick={() => setActiveView('dashboard')} title="Go Back" style={{ pointerEvents:'all', marginRight:'auto' }}>
+                        <button className="back-button animate-fade" onClick={() => setActiveView('dashboard')} title="Go Back" style={{ marginRight:'8px' }}>
                             <ChevronLeft size={20} />
                         </button>
                     )}
-                    <div style={{ pointerEvents:'all' }}>
-                        <div className="theme-toggle">
-                            <button onClick={() => setIsDarkMode(false)} className={!isDarkMode ? 'active' : ''}><Sun size={18} /></button>
-                            <button onClick={() => setIsDarkMode(true)} className={isDarkMode ? 'active' : ''}><Moon size={18} /></button>
-                        </div>
+                    <div className="theme-toggle">
+                        <button onClick={() => setIsDarkMode(false)} className={!isDarkMode ? 'active' : ''}><Sun size={18} /></button>
+                        <button onClick={() => setIsDarkMode(true)} className={isDarkMode ? 'active' : ''}><Moon size={18} /></button>
                     </div>
-                    <div className="notification-bell" style={{ pointerEvents:'all' }}>
+                    <div className="notification-bell">
                         <button onClick={() => setShowNotifications(!showNotifications)}>
                             <Bell size={20} />
                             {notifications.length > 0 && <span className="notification-dot" />}
@@ -841,7 +839,7 @@ export default function Dashboard() {
                         </div>
                 </div>
 
-                <div className="content-body animate-fade" style={{ marginTop: '-52px' }}>
+                <div className="content-body animate-fade">
                     {activeView === 'dashboard' && (
                         <>
                             <div className="welcome-banner">
