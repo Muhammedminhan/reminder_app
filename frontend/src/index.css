@@ -124,7 +124,7 @@
 
 /* Top header — dark */
 .dashboard-container .main-header {
-  background: #00ABE4 !important;
+  background: #E9F1FA !important;
   border-bottom: none !important;
   backdrop-filter: none !important;
   box-shadow: none !important;
@@ -147,7 +147,7 @@
 }
 .dashboard-container .theme-toggle button       { color: #4a7a9b !important; }
 .dashboard-container .theme-toggle button.active {
-  background: #00ABE4 !important;
+  background: #E9F1FA !important;
   color: #ffffff !important;
 }
 .dashboard-container .notification-bell button {
@@ -156,10 +156,10 @@
   color: #00ABE4 !important;
 }
 .dashboard-container .notification-bell button:hover {
-  background: #00ABE4 !important;
+  background: #E9F1FA !important;
   color: #ffffff !important;
 }
-.dashboard-container .notification-dot { background: #00ABE4 !important; }
+.dashboard-container .notification-dot { background: #E9F1FA !important; }
 
 /* Welcome banner — dark */
 .dashboard-container .welcome-banner {
@@ -172,7 +172,7 @@
 .dashboard-container .welcome-text p  { color: #4a7a9b !important; }
 .dashboard-container .text-gradient,
 .dashboard-container .welcome-text .text-gradient {
-  background: #00ABE4 !important;
+  background: #E9F1FA !important;
   -webkit-background-clip: text !important; background-clip: text !important;
   -webkit-text-fill-color: transparent !important;
 }
@@ -219,7 +219,7 @@
 /* Buttons — dark */
 .dashboard-container .btn-primary,
 .dashboard-container [class*="btn-primary"] {
-  background: #00ABE4 !important;
+  background: #E9F1FA !important;
   color: #FFFFFF !important; border: none !important;
   box-shadow: 0 4px 16px rgba(0,171,228,0.4) !important;
 }
@@ -233,7 +233,7 @@
   border: 1.5px solid rgba(0,171,228,0.35) !important;
 }
 .dashboard-container .btn-secondary:hover {
-  background: #00ABE4 !important;
+  background: #E9F1FA !important;
   border-color: #00ABE4 !important;
   color: #ffffff !important;
 }
@@ -260,7 +260,7 @@
 .dashboard-container .settings-nav button:hover { color: #00ABE4 !important; }
 .dashboard-container .settings-nav button.active { color: #00ABE4 !important; }
 .dashboard-container .settings-nav button.active::after {
-  background: #00ABE4 !important;
+  background: #E9F1FA !important;
   box-shadow: none !important;
 }
 
@@ -286,7 +286,7 @@
 /* Toggle switches — replace purple with #00ABE4 */
 .dashboard-container .toggle { background: #c8dce9 !important; }
 .dashboard-container .toggle.active {
-  background: #00ABE4 !important;
+  background: #E9F1FA !important;
   box-shadow: 0 0 10px rgba(0,171,228,0.35) !important;
 }
 
@@ -344,7 +344,7 @@
 /* Dark mode settings overrides */
 body:not(.light-mode) .dashboard-container .settings-nav button { color: #4a7a9b !important; }
 body:not(.light-mode) .dashboard-container .settings-nav button.active { color: #00ABE4 !important; }
-body:not(.light-mode) .dashboard-container .settings-nav button.active::after { background: #00ABE4 !important; box-shadow: none !important; }
+body:not(.light-mode) .dashboard-container .settings-nav button.active::after { background: #E9F1FA !important; box-shadow: none !important; }
 body:not(.light-mode) .dashboard-container .settings-header h1,
 body:not(.light-mode) .dashboard-container .settings-header h2 { color: #ffffff !important; }
 body:not(.light-mode) .dashboard-container .control-row {
@@ -359,7 +359,7 @@ body:not(.light-mode) .dashboard-container .control-info span,
 body:not(.light-mode) .dashboard-container .control-info strong { color: #ffffff !important; }
 body:not(.light-mode) .dashboard-container .detail-item span   { color: #4a7a9b !important; }
 body:not(.light-mode) .dashboard-container .toggle             { background: #222222 !important; }
-body:not(.light-mode) .dashboard-container .toggle.active      { background: #00ABE4 !important; box-shadow: 0 0 10px rgba(0,171,228,0.4) !important; }
+body:not(.light-mode) .dashboard-container .toggle.active      { background: #E9F1FA !important; box-shadow: 0 0 10px rgba(0,171,228,0.4) !important; }
 body:not(.light-mode) .dashboard-container input[type="checkbox"] { accent-color: #00ABE4 !important; }
 body:not(.light-mode) .dashboard-container .content-body input,
 body:not(.light-mode) .dashboard-container .content-body select,
@@ -413,7 +413,7 @@ body:not(.light-mode) .dashboard-container .avatar-placeholder { color: #00ABE4 
   background: rgba(0,171,228,0.1) !important; color: #00ABE4 !important;
 }
 .light-mode .dashboard-container .main-header {
-  background: #00ABE4 !important;
+  background: #E9F1FA !important;
   border-bottom: none !important;
   backdrop-filter: none !important;
   box-shadow: none !important;
@@ -536,7 +536,7 @@ body:not(.light-mode) .dashboard-container .avatar-placeholder { color: #00ABE4 
 .modal-container .help-text            { color: #3d6a84 !important; }
 .modal-container .btn-primary,
 .modal-footer .btn-primary {
-  background: #00ABE4 !important;
+  background: #E9F1FA !important;
   color: #FFFFFF !important; border: none !important;
   box-shadow: 0 4px 16px rgba(0,171,228,0.4) !important;
 }
@@ -547,7 +547,7 @@ body:not(.light-mode) .dashboard-container .avatar-placeholder { color: #00ABE4 
   border: 1.5px solid rgba(0,171,228,0.3) !important;
 }
 .modal-container .btn-secondary:hover {
-  background: #00ABE4 !important; border-color: #00ABE4 !important; color: #ffffff !important;
+  background: #E9F1FA !important; border-color: #00ABE4 !important; color: #ffffff !important;
 }
 
 /* Light mode modal */
@@ -910,7 +910,7 @@ select {
 /* Header Components */
 .main-header {
   padding: 8px 48px;
-  background: #00ABE4 !important;
+  background: #E9F1FA !important;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -2141,7 +2141,7 @@ body:not(.light-mode) .dashboard-container .btn-tertiary:hover { background: #16
   font-size: 14px !important;
   font-weight: 700 !important;
   border-radius: 12px !important;
-  background: #00ABE4 !important;
+  background: #E9F1FA !important;
   color: #ffffff !important;
   border: none !important;
   cursor: pointer;
@@ -4069,23 +4069,23 @@ body:not(.light-mode) .jira-config-form .toggle-label { color: #e2f4fb !importan
 }
 
 
-/* White icons on blue header bar */
+/* Icons on light blue header bar — match dashboard bg */
 .dashboard-container .main-header .theme-toggle {
-  background: rgba(255,255,255,0.2) !important;
-  border: 1px solid rgba(255,255,255,0.3) !important;
+  background: #FFFFFF !important;
+  border: 1.5px solid rgba(0,171,228,0.2) !important;
 }
-.dashboard-container .main-header .theme-toggle button { color: #ffffff !important; }
+.dashboard-container .main-header .theme-toggle button { color: #6b8099 !important; }
 .dashboard-container .main-header .theme-toggle button.active {
-  background: rgba(255,255,255,0.35) !important;
-  color: #ffffff !important;
+  background: #E9F1FA !important;
+  color: #00ABE4 !important;
 }
 .dashboard-container .main-header .notification-bell button {
-  background: rgba(255,255,255,0.2) !important;
-  border: 1px solid rgba(255,255,255,0.3) !important;
-  color: #ffffff !important;
+  background: #FFFFFF !important;
+  border: 1.5px solid rgba(0,171,228,0.2) !important;
+  color: #3d5a73 !important;
 }
 .dashboard-container .main-header .back-button {
-  background: rgba(255,255,255,0.2) !important;
-  border: 1px solid rgba(255,255,255,0.3) !important;
-  color: #ffffff !important;
+  background: #FFFFFF !important;
+  border: 1.5px solid rgba(0,171,228,0.2) !important;
+  color: #3d5a73 !important;
 }
