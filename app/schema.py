@@ -1078,28 +1078,30 @@ class DeleteReminder(graphene.Mutation):
 class CreateDepartment(graphene.Mutation):
     class Arguments:
         name = graphene.String(required=True)
-        company = graphene.ID(required=False)
+        company = graphene.ID(required=False)    # legacy
+        company_id = graphene.ID(required=False) # camelCase → companyId from frontend
 
     ok = graphene.Boolean()
     department = graphene.Field(DepartmentType)
 
-    def mutate(root, info, name, company=None):
+    def mutate(root, info, name, company=None, company_id=None):
         user = get_authenticated_user(info)
         if not user:
             raise Exception('Authentication required')
-        
-        # Security: Only allow users to create departments for their own company
+
+        # Accept either company or company_id arg (frontend sends companyId → company_id)
+        resolved_company = company_id or company
+
         if not user.is_superuser:
             if not getattr(user, 'company_id', None):
                 raise Exception('User must belong to a company to create departments')
-            company = user.company.id  # Force user's company
-        elif company and not user.is_superuser:
-            # Even if company is specified, non-superusers can only use their own company
-            company = user.company.id
-        
+            resolved_company = str(user.company_id)  # Force user's own company
+
         department = Department(name=name)
-        if company:
-            department.company_id = company
+        if resolved_company:
+            department.company_id = resolved_company
+        elif getattr(user, 'company_id', None):
+            department.company_id = user.company_id
         department.save()
         return CreateDepartment(ok=True, department=department)
 
@@ -1958,13 +1960,19 @@ class CreateUser(graphene.Mutation):
         password = graphene.String(required=True)
         departments = graphene.List(graphene.ID, required=False)
         department = graphene.ID(required=False)  # Backward compatibility
+        department_ids = graphene.List(graphene.ID, required=False)  # camelCase → departmentIds
         is_active = graphene.Boolean(required=False)
-        company = graphene.ID(required=False)  # Superuser only
+        is_staff = graphene.Boolean(required=False)
+        is_superuser = graphene.Boolean(required=False)
+        first_name = graphene.String(required=False)
+        last_name = graphene.String(required=False)
+        company = graphene.ID(required=False)   # legacy
+        company_id = graphene.ID(required=False) # camelCase → companyId from frontend
 
     ok = graphene.Boolean()
     user = graphene.Field(UserType)
 
-    def mutate(root, info, username, password, email=None, departments=None, department=None, is_active=True, company=None):
+    def mutate(root, info, username, password, email=None, departments=None, department=None, department_ids=None, is_active=True, is_staff=False, is_superuser=False, first_name=None, last_name=None, company=None, company_id=None):
         from .utils import is_rate_limited
         from django.conf import settings
         
@@ -1985,10 +1993,11 @@ class CreateUser(graphene.Mutation):
         if not (requester.is_superuser or is_company_admin):
             raise Exception('Not authorized to create users')
 
-        # Determine target company
+        # Determine target company — accept both company and company_id (companyId from frontend)
+        resolved_company = company_id or company
         target_company_id = None
-        if requester.is_superuser and company:
-            target_company_id = company
+        if requester.is_superuser and resolved_company:
+            target_company_id = resolved_company
         else:
             target_company_id = getattr(requester, 'company_id', None)
             if not target_company_id:
@@ -2005,10 +2014,20 @@ class CreateUser(graphene.Mutation):
             new_user.company_id = target_company_id
         except Exception:
             pass
-            
-        # Handle departments
-        if departments:
-            depts = Department.objects.filter(id__in=departments, company_id=target_company_id)
+
+        # Set optional profile fields
+        if first_name: new_user.first_name = first_name
+        if last_name:  new_user.last_name  = last_name
+
+        # Staff / superuser flags — only superusers can grant these
+        if requester.is_superuser:
+            new_user.is_staff      = bool(is_staff)
+            new_user.is_superuser  = bool(is_superuser)
+
+        # Handle departments (support both camelCase departmentIds and legacy departments)
+        all_dept_ids = department_ids or departments
+        if all_dept_ids:
+            depts = Department.objects.filter(id__in=all_dept_ids, company_id=target_company_id)
             new_user.departments.set(depts)
         elif department:
             dept_obj = Department.objects.filter(pk=department, company_id=target_company_id).first()
