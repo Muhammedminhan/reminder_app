@@ -216,10 +216,10 @@
 .dashboard-container p                   { color: #7ab3cc !important; }
 .dashboard-container .card-body          { color: #7ab3cc !important; }
 
-/* Buttons — dark */
+/* Buttons — brand gradient */
 .dashboard-container .btn-primary,
 .dashboard-container [class*="btn-primary"] {
-  background: #E9F1FA !important;
+  background: linear-gradient(90deg, #00ABE4, #5dd5f8) !important;
   color: #FFFFFF !important; border: none !important;
   box-shadow: 0 4px 16px rgba(0,171,228,0.4) !important;
 }
