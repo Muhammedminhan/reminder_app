@@ -417,6 +417,7 @@ body:not(.light-mode) .dashboard-container .avatar-placeholder { color: #00ABE4 
   border-bottom: 1px solid rgba(0,171,228,0.15) !important;
   backdrop-filter: blur(20px) !important;
   box-shadow: 0 1px 8px rgba(0,171,228,0.08) !important;
+  padding: 10px 48px !important;
 }
 .light-mode .dashboard-container .search-wrapper input {
   background: #FFFFFF !important;
@@ -908,7 +909,7 @@ select {
 
 /* Header Components */
 .main-header {
-  padding: 24px 48px;
+  padding: 10px 48px;
   display: flex;
   justify-content: space-between;
   align-items: center;
