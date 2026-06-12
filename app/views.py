@@ -52,17 +52,34 @@ def login_redirect(request):
         return redirect('admin:index')
 
 
+def _check_webhook_auth(request):
+    """Return (ok, error_response) for webhook endpoints.
+    Validates token and applies per-IP rate limiting (10 req/min).
+    """
+    expected = os.environ.get('WEBHOOK_TOKEN')
+    token = request.headers.get('X-Webhook-Token') or request.POST.get('token')
+    if not expected or token != expected:
+        return False, JsonResponse({"status": "error", "message": "Unauthorized"}, status=401)
+    # Rate limit per source IP — same pattern as login throttle
+    ip = request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR', 'unknown')).split(',')[0].strip()
+    rl_key = f"rl:webhook:{ip}"
+    attempts = cache.get(rl_key, 0)
+    if attempts >= 10:
+        return False, JsonResponse({"status": "error", "message": "Rate limited"}, status=429)
+    cache.set(rl_key, attempts + 1, 60)
+    return True, None
+
+
 @csrf_exempt
 @require_http_methods(["POST"])
 def process_tasks_webhook(request):
     """
     Webhook endpoint for processing scheduled tasks
-    OWASP: Authenticated via X-Webhook-Token header.
+    OWASP: Authenticated via X-Webhook-Token header. Rate limited 10/min per IP.
     """
-    expected = os.environ.get('WEBHOOK_TOKEN')
-    token = request.headers.get('X-Webhook-Token') or request.POST.get('token')
-    if not expected or token != expected:
-        return JsonResponse({"status": "error", "message": "Unauthorized"}, status=401)
+    ok, err = _check_webhook_auth(request)
+    if not ok:
+        return err
 
     try:
         process_scheduled_tasks()
@@ -76,12 +93,11 @@ def process_tasks_webhook(request):
 def process_reminders_webhook(request):
     """
     Webhook endpoint for processing reminder tasks
-    OWASP: Authenticated via X-Webhook-Token header.
+    OWASP: Authenticated via X-Webhook-Token header. Rate limited 10/min per IP.
     """
-    expected = os.environ.get('WEBHOOK_TOKEN')
-    token = request.headers.get('X-Webhook-Token') or request.POST.get('token')
-    if not expected or token != expected:
-        return JsonResponse({"status": "error", "message": "Unauthorized"}, status=401)
+    ok, err = _check_webhook_auth(request)
+    if not ok:
+        return err
 
     try:
         result = process_reminder_tasks()
@@ -109,11 +125,11 @@ def fallback_notification_webhook(request):
     """
     Webhook endpoint for triggering fallback notification logic.
     Can be called by Cloud Scheduler or external cron jobs.
+    OWASP: Authenticated via X-Webhook-Token header. Rate limited 10/min per IP.
     """
-    expected = os.environ.get('WEBHOOK_TOKEN')
-    token = request.headers.get('X-Webhook-Token') or request.POST.get('token')
-    if not expected or token != expected:
-        return JsonResponse({"error": "Unauthorized"}, status=401)
+    ok, err = _check_webhook_auth(request)
+    if not ok:
+        return err
 
     from .tasks import check_and_notify_admin_for_email_threshold
     try:
@@ -588,10 +604,10 @@ def get_user_profile(request):
     # Check if user_roles relation exists and is valid
     try:
         user_role = user.user_roles.filter(is_active=True).first()
-        if user_role:
+        if user_role and user_role.role:
             role_name = user_role.role.name
-    except Exception:
-        pass
+    except (AttributeError, Exception) as exc:
+        logger.warning(f"Role lookup failed for user {user.id}: {exc}")
 
     if role_name == "User":
         if user.is_superuser:
@@ -678,8 +694,20 @@ def _validate_attachment(uploaded_file):
                 return f"File content does not match its extension '{ext}'. Upload rejected."
             return None  # magic matched and extension is consistent — valid
 
-    # Extension is whitelisted but has no magic bytes entry (e.g. .txt, .csv)
-    # — allow these since they have no reliable binary signature.
+    # Text-only extensions — validate they contain no binary data or CSV formula injection
+    if ext in {'.txt', '.csv'}:
+        uploaded_file.seek(0)
+        sample = uploaded_file.read(1024)
+        uploaded_file.seek(0)
+        if b'\x00' in sample:
+            return f"File appears to be binary, not a text/csv file. Upload rejected."
+        if ext == '.csv':
+            first_non_empty = sample.lstrip(b'\xef\xbb\xbf \t\r\n')  # strip UTF-8 BOM + whitespace
+            if first_non_empty and chr(first_non_empty[0]) in ('=', '+', '@', '-', '\t'):
+                return "CSV file starts with a formula character (=, +, @, -, tab). Upload rejected to prevent spreadsheet injection."
+        return None
+
+    # Extension is whitelisted but has no magic bytes entry — allow with no further checks.
     return None
 
 
@@ -761,11 +789,11 @@ def upload_attachment(request):
 def process_slack_pending_reminders_webhook(request):
     """Webhook to trigger sending Slack notifications for pending reminders.
     Intended to be called by a scheduler at 09:00 local time.
+    OWASP: Authenticated via X-Webhook-Token header. Rate limited 10/min per IP.
     """
-    expected = os.environ.get('WEBHOOK_TOKEN')
-    token = request.headers.get('X-Webhook-Token') or request.POST.get('token')
-    if not expected or token != expected:
-        return JsonResponse({"ok": False, "error": "Unauthorized"}, status=401)
+    ok, err = _check_webhook_auth(request)
+    if not ok:
+        return err
 
     try:
         from .tasks import process_slack_pending_reminders
@@ -811,7 +839,9 @@ def sso_acs(request, company_id):
 
     try:
         company = get_object_or_404(Company, pk=company_id)
-        sso_settings = company.sso_settings
+        sso_settings = getattr(company, 'sso_settings', None)
+        if not sso_settings or not sso_settings.is_enabled:
+            return HttpResponseForbidden("SSO not enabled for this company.")
 
         req = SAMLHelper.get_saml_request(request)
         saml_settings = SAMLHelper.get_settings(sso_settings, host=request.get_host())
@@ -827,30 +857,51 @@ def sso_acs(request, company_id):
         if not auth.is_authenticated():
             return HttpResponseForbidden("SAML Authentication Failed.")
 
+        # H2: Validate the response issuer matches the configured IdP entity ID for this company.
+        # This prevents a cross-tenant attack where a SAML response is posted to another
+        # company's ACS URL (the company_id is in the URL, so anyone can craft that request).
+        response_issuer = auth.get_last_response_in_xml() and auth.get_settings().get_idp_data().get('entityId')
+        configured_entity_id = sso_settings.entity_id
+        if response_issuer and configured_entity_id and response_issuer != configured_entity_id:
+            logger.warning(f"SAML ACS: issuer mismatch for company {company_id} — expected {configured_entity_id}, got {response_issuer}")
+            return HttpResponseForbidden("SAML issuer does not match configured IdP.")
+
         # JIT Provisioning
         user_data = auth.get_attributes()
-        # Expecting 'email' attribute. Adjust key based on IdP (e.g., 'http://schemas.xmlsoap.org/.../emailaddress')
-        # Here we assume standard mapping or 'email'
-        email_list = user_data.get('email') or user_data.get('User.Email') or user_data.get('http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress')
+        email_list = (
+            user_data.get('email')
+            or user_data.get('User.Email')
+            or user_data.get('http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress')
+        )
 
         if not email_list:
-             # Fallback to NameID if it looks like an email
-             name_id = auth.get_nameid()
-             if '@' in name_id:
-                 email = name_id
-             else:
-                 return HttpResponseForbidden("No email attribute found in SAML Assertion.")
+            name_id = auth.get_nameid()
+            if name_id and '@' in name_id:
+                email = name_id
+            else:
+                return HttpResponseForbidden("No email attribute found in SAML Assertion.")
         else:
-             email = email_list[0]
+            email = email_list[0]
+
+        if not email or '@' not in email:
+            return HttpResponseForbidden("Invalid email in SAML Assertion.")
+
+        # H3: Restrict JIT provisioning to email domains the company owns.
+        # company.domain is the verified domain (e.g. "acme.com").
+        email_domain = email.split('@')[1].lower()
+        company_domain = getattr(company, 'domain', '') or ''
+        if company_domain and email_domain != company_domain.lower():
+            logger.warning(
+                f"SAML JIT blocked: email domain '{email_domain}' not authorised for company {company_id} (domain: {company_domain})"
+            )
+            return HttpResponseForbidden("Email domain not authorised for this organisation's SSO.")
 
         # Login or Create User
         from django.contrib.auth import login
         user = User.objects.filter(email__iexact=email).first()
 
         if not user:
-            # Create new user
             username = email.split('@')[0]
-            # Ensure unique username
             if User.objects.filter(username=username).exists():
                 username = f"{username}_{uuid.uuid4().hex[:4]}"
 
@@ -858,16 +909,14 @@ def sso_acs(request, company_id):
                 username=username,
                 email=email,
                 company=company,
-                # Set unusable password or random
             )
             user.set_unusable_password()
             user.save()
-            logger.info(f"JIT Provisioning: Created user {user.username} for method SAML")
+            logger.info(f"JIT Provisioning: Created user {user.username} for company {company_id} via SAML")
         else:
-            # Optional: Ensure user belongs to this company?
-            # For now, if email matches, we log them in.
-            # If multi-company is strict, we might block if user.company != company
-            pass
+            if user.company_id and str(user.company_id) != str(company_id):
+                logger.warning(f"SAML ACS: user {user.id} belongs to company {user.company_id}, tried to log in via company {company_id}")
+                return HttpResponseForbidden("User does not belong to this organisation.")
 
         # Backend must be specified for manual login
         login(request, user, backend='django.contrib.auth.backends.ModelBackend')
@@ -1034,9 +1083,11 @@ def forgot_password(request):
             except Exception as e:
                 logger.error(f"Failed to send password reset email: {e}")
             
-            # Only log the link in DEBUG mode (never in production)
+            # In DEBUG mode log only the token hash (never the full link)
             if getattr(settings, 'DEBUG', False):
-                logger.info("\n" + "="*50 + "\nPASSWORD RESET LINK (DEBUG ONLY):\n" + reset_link + "\n" + "="*50)
+                import hashlib
+                _dbg_hash = hashlib.sha256(reset_link.encode()).hexdigest()[:16]
+                logger.info(f"PASSWORD RESET TOKEN HASH (DEBUG ONLY): {_dbg_hash}")
 
         return JsonResponse({'ok': True, 'message': 'If an account exists with that email, a reset link has been sent.'})
     except json.JSONDecodeError:
@@ -1096,7 +1147,9 @@ def reset_password(request):
         token_hash = hashlib.sha256(token.encode()).hexdigest()
         used_key = f"pw_reset_used:{token_hash}"
 
-        if cache.get(used_key):
+        # Atomically claim the token — cache.add() returns False if key already exists.
+        # This is atomic in Redis and prevents the check-then-set race.
+        if not cache.add(used_key, True, timeout=3600):
             return JsonResponse(
                 {'ok': False, 'message': 'This reset link has already been used. Please request a new one.'},
                 status=400,
@@ -1105,13 +1158,12 @@ def reset_password(request):
         User = get_user_model()
         user = User.objects.filter(email__iexact=email).first()
         if not user:
+            # Token was claimed but user not found — release so they can retry
+            cache.delete(used_key)
             return JsonResponse({'ok': False, 'message': 'User not found'}, status=404)
 
         user.set_password(new_password)
         user.save()
-
-        # Mark token as consumed for the remainder of its 1-hour lifetime
-        cache.set(used_key, True, timeout=3600)
 
         logger.info(f"PASSWORD RESET SUCCESS: User={user.username}")
         return JsonResponse({'ok': True, 'message': 'Password has been reset successfully'})

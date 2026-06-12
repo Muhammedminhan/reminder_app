@@ -1159,7 +1159,14 @@ def _schedule_next_reminder(reminder):
                 if not days:
                     next_start = base_start + timedelta(weeks=every)
                 else:
-                    enabled_days = sorted([int(d) for d in days.split(',')])
+                    try:
+                        parsed = [int(d.strip()) for d in days.split(',') if d.strip()]
+                        if not parsed or any(d < 0 or d > 6 for d in parsed):
+                            raise ValueError(f"invalid day values: {days!r}")
+                        enabled_days = sorted(parsed)
+                    except ValueError as exc:
+                        logger.error(f"_schedule_next_reminder: custom_repeat_days malformed for reminder {reminder.id}: {exc}")
+                        return None
                     found = False
                     current_google_wd = (base_start.weekday() + 1) % 7
                     for d in enabled_days:

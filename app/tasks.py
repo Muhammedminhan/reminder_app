@@ -10,7 +10,7 @@ from .constants import SENDER_NAME
 from python_http_client.exceptions import HTTPError
 import logging
 import requests
-from datetime import datetime, timedelta
+from datetime import timedelta
 from django.core.mail import send_mail
 from .models import Reminder
 from app.utils import _notify_slack_pending_reminder
@@ -30,37 +30,19 @@ logger = logging.getLogger(__name__)
 # sending, preventing double-sends under concurrent webhook invocations.
 
 
-# @shared_task
-# def check_domain_verification(domain_id):
-#     from .models import DomainVerification
-#     from .utils import check_txt_record
-#     try:
-#         domain_verification = DomainVerification.objects.get(id=domain_id)
-#         if not domain_verification.verified:
-#             if check_txt_record(domain_verification):
-#                 messages.success(f"Domain {domain_verification.domain} has been successfully verified!")
-#             else:
-#                 # Reschedule the task to check again after 1 hour
-#                 check_domain_verification.apply_async((domain_id,), countdown=3600)
-#     except DomainVerification.DoesNotExist:
-#         pass
-
 def check_domain_verification(domain_id):
+    """Poll SendGrid to update domain verification status for the given domain ID."""
     from .models import SendGridDomainAuth
     url = f"https://api.sendgrid.com/v3/whitelabel/domains/{domain_id}"
-    headers = {
-        "Authorization": f"Bearer {config('SENDGRID_API_KEY')}"
-    }
-
+    headers = {"Authorization": f"Bearer {config('SENDGRID_API_KEY')}"}
     response = requests.get(url, headers=headers)
     if response.status_code == 200:
         data = response.json()
         sendgrid_instance = SendGridDomainAuth.objects.get(domain_id=domain_id)
         sendgrid_instance.is_verified = data.get("valid", False)
         sendgrid_instance.save()
-        # return data.get("valid", False)
     else:
-        check_domain_verification.apply_async((domain_id,), countdown=3600)
+        logger.warning(f"check_domain_verification: SendGrid returned {response.status_code} for domain {domain_id}")
 
 
 def reset_sent_status():
@@ -85,7 +67,7 @@ def check_and_notify_admin_for_email_threshold():
     if not admin_email:
         logger.warning("ADMIN_EMAIL not set in settings.")
         return
-    today = datetime.now().date()
+    today = timezone.now().date()
     threshold = 80
     alert_days = []
     for offset in range(0, 8):  # Today + next 7 days
@@ -117,7 +99,7 @@ def process_slack_pending_reminders():
     - reminder_start_date is today (server local date)
     """
     try:
-        now = timezone.localtime()
+        now = timezone.now()
         today = now.date()
         # Select pending reminders for today
         qs = Reminder.objects.filter(

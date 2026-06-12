@@ -492,7 +492,7 @@ class Query(graphene.ObjectType):
         if not user:
             return Reminder.objects.none()
 
-        qs = Reminder.objects.all().select_related('company', 'created_by')
+        qs = Reminder.objects.all().select_related('company', 'created_by').prefetch_related('visible_to_groups', 'attachments', 'slack_users')
         if active is not None:
             qs = qs.filter(active=active)
         
@@ -824,6 +824,7 @@ class Query(graphene.ObjectType):
         user = get_authenticated_user(info)
         if not user or not (user.is_superuser or user.is_staff):
             return []
+        limit = max(1, min(int(limit or 50), 1000))
         from auditlog.models import LogEntry
         logs = LogEntry.objects.select_related('actor', 'content_type').order_by('-timestamp')[:limit]
         result = []

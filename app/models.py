@@ -155,8 +155,8 @@ class Reminder(models.Model):
     def __str__(self):
         return self.title
 
-    def is_active(self):
-        """Returns True if the current date is before the end date, or no end date is set."""
+    def is_before_end_date(self):
+        """Returns True if no end date is set, or the current time is before the end date."""
         return not self.reminder_end_date or timezone.now() <= self.reminder_end_date
 
     def clean(self):
@@ -200,10 +200,10 @@ class Reminder(models.Model):
         super().save(*args, **kwargs)
 
     def delete(self, using=None, keep_parents=False):
-        if not self.is_deleted:
+        updated = Reminder.objects.filter(pk=self.pk, is_deleted=False).update(is_deleted=True)
+        if updated:
             self.is_deleted = True
-            self.save(update_fields=['is_deleted'])
-        return (1, {self.__class__.__name__: 1})
+        return (updated, {self.__class__.__name__: updated})
 
     class Meta:
         ordering = ['-reminder_start_date']
@@ -293,7 +293,6 @@ class User(AbstractUser):
             return True
         
         # Check through UserRole assignments
-        from .models import UserRole
         role_ids = UserRole.objects.filter(user=self, is_active=True).values_list('role_id', flat=True)
         if role_ids:
             if Permission.objects.filter(

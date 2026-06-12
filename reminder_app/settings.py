@@ -27,9 +27,20 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
  
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = config('SECRET_KEY', default=os.environ.get('SECRET_KEY', 'change-me-please'))
+# No default — fail fast in production. For local dev, set SECRET_KEY in .env.
+SECRET_KEY = config('SECRET_KEY', default='change-me-please')
+_is_cloud_run = bool(os.environ.get('K_SERVICE'))
+if _is_cloud_run and (not SECRET_KEY or SECRET_KEY == 'change-me-please'):
+    from django.core.exceptions import ImproperlyConfigured
+    raise ImproperlyConfigured(
+        'SECRET_KEY must be set to a strong random string in production. '
+        'Generate with: python -c "import secrets; print(secrets.token_urlsafe(50))"'
+    )
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config('DEBUG', default=False, cast=bool)
+if DEBUG and _is_cloud_run:
+    from django.core.exceptions import ImproperlyConfigured
+    raise ImproperlyConfigured("DEBUG=True is not allowed in Cloud Run (K_SERVICE is set).")
 
 # ALLOWED_HOSTS — required in production; start.sh enforces it is set before gunicorn starts.
 # In DEBUG mode we relax to all hosts for local development convenience.
@@ -420,8 +431,13 @@ RATE_LIMIT_SIGNUP_PER_MINUTE = int(config('RATE_LIMIT_SIGNUP_PER_MINUTE', defaul
 # from SECRET_KEY so local dev works without extra setup.
 _raw_encryption_key = os.environ.get('FIELD_ENCRYPTION_KEY', '')
 if not _raw_encryption_key:
-    # Derive a deterministic key from SECRET_KEY for local dev only.
-    # In production, always set FIELD_ENCRYPTION_KEY explicitly.
+    if _is_cloud_run:
+        from django.core.exceptions import ImproperlyConfigured
+        raise ImproperlyConfigured(
+            'FIELD_ENCRYPTION_KEY must be set in production (never derive from SECRET_KEY). '
+            'Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"'
+        )
+    # Local dev fallback: derive deterministically from SECRET_KEY.
     import base64, hashlib
     _raw_encryption_key = base64.urlsafe_b64encode(
         hashlib.sha256(SECRET_KEY.encode()).digest()

@@ -34,18 +34,24 @@ class SAMLHelper:
     @staticmethod
     def get_settings(company_sso_settings, host=None):
         """Build SAML settings dictionary dynamically for a company"""
-        # Allow passing dynamic host, or fallback to sensible default (not *)
         if host:
             base_url = f"https://{host}"
         else:
-            # Fallback that avoids '*'
-            base_url = "http://localhost:8000"
-            if settings.ALLOWED_HOSTS and settings.ALLOWED_HOSTS[0] != '*':
-                 base_url = f"https://{settings.ALLOWED_HOSTS[0]}"
+            # Require an explicit BACKEND_URL in production; fall back to ALLOWED_HOSTS for local dev.
+            import os
+            backend_url = os.environ.get('BACKEND_URL', '').rstrip('/')
+            if backend_url:
+                base_url = backend_url
+            elif settings.ALLOWED_HOSTS and settings.ALLOWED_HOSTS[0] not in ('*', ''):
+                base_url = f"https://{settings.ALLOWED_HOSTS[0]}"
+            else:
+                raise ValueError(
+                    "Cannot determine SAML base URL: set BACKEND_URL env var or ALLOWED_HOSTS."
+                )
 
         return {
             'strict': True,
-            'debug': settings.DEBUG,
+            'debug': False,  # Never expose SAML internals regardless of DEBUG setting
             'sp': {
                 'entityId': f"{base_url}/sso/metadata/",
                 'assertionConsumerService': {

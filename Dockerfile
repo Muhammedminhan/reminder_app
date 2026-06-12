@@ -16,7 +16,7 @@ WORKDIR /reminder_app
 
 # ── Python dependencies ───────────────────────────────────────────────────────
 COPY requirements.txt /reminder_app/
-RUN pip install --upgrade pip && pip install -r requirements.txt
+RUN pip install --upgrade "pip==24.3.1" && pip install -r requirements.txt
 
 # ── Copy full source FIRST ────────────────────────────────────────────────────
 # Must come before the frontend build so the build output lands inside the
@@ -54,5 +54,14 @@ ENV PORT=8080
 
 RUN chmod +x /reminder_app/start.sh
 
+# ── Security: run as non-root ─────────────────────────────────────────────────
+RUN addgroup -g 1000 django && adduser -D -u 1000 -G django django \
+    && chown -R django:django /reminder_app
+USER django
+
 EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health/ || exit 1
+
 CMD ["/reminder_app/start.sh"]
