@@ -681,9 +681,13 @@ export default function Dashboard() {
             return false;
         }
 
-        const matchesSearch = r.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            r.senderEmail.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            r.receiverEmail.toLowerCase().includes(searchTerm.toLowerCase());
+        const q = searchTerm.toLowerCase();
+        const matchesSearch = !q ||
+            (r.title || '').toLowerCase().includes(q) ||
+            (r.senderEmail || '').toLowerCase().includes(q) ||
+            (r.receiverEmail || '').toLowerCase().includes(q) ||
+            (r.description || '').toLowerCase().includes(q) ||
+            (r.senderName || '').toLowerCase().includes(q);
         
         const matchesStatus = filterStatus === 'all' || 
             (filterStatus === 'active' && !r.completed) || 
@@ -790,14 +794,24 @@ export default function Dashboard() {
                                 <ChevronLeft size={20} />
                             </button>
                         )}
-                        <div className="search-wrapper">
+                        <div className="search-wrapper" style={{ position: 'relative' }}>
                             <Search size={18} className="search-icon" />
                             <input
                                 type="text"
-                                placeholder="Search everything..."
+                                placeholder="Search reminders by title, email, description..."
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
+                                style={{ paddingRight: searchTerm ? '36px' : undefined }}
                             />
+                            {searchTerm && (
+                                <button
+                                    onClick={() => setSearchTerm('')}
+                                    style={{ position:'absolute', right:'12px', top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', color:'#94afc5', padding:'2px', display:'flex', alignItems:'center' }}
+                                    title="Clear search"
+                                >
+                                    <X size={15} />
+                                </button>
+                            )}
                         </div>
                     </div>
                     <div className="header-actions">
