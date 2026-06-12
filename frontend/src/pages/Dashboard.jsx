@@ -851,7 +851,7 @@ export default function Dashboard() {
                                     <h1>Welcome back, <span className="text-gradient">{(data?.me?.firstName || data?.me?.first_name || restUser?.first_name || data?.me?.username || restUser?.username) || 'Admin'}</span>! <small style={{fontSize: '11px', opacity: 0.5}}>({data?.me?.email || restUser?.email || 'Logged In'})</small> ✨</h1>
                                     <p>Workspace synchronized. Review your active triggers below.</p>
                                 </div>
-                                <button className="btn-primary" onClick={() => setIsModalOpen(true)}>
+                                <button className="btn-primary" onClick={() => setIsModalOpen(true)} style={{ background: 'linear-gradient(90deg, #00ABE4, #5dd5f8)', boxShadow: '0 4px 16px rgba(0,171,228,0.4)', border: 'none' }}>
                                     <Plus size={20} /> New Trigger
                                 </button>
                             </div>
