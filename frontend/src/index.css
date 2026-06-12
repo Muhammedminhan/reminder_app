@@ -123,10 +123,10 @@
 .dashboard-container .submenu-icon { color: #4a7a9b !important; }
 
 /* Top header — dark */
-/* Dark mode — header matches dark page bg */
+/* Dark mode — header matches dark page bg exactly */
 .dashboard-container .main-header {
-  background: #06111a !important;
-  border-bottom: 1px solid rgba(0,171,228,0.15) !important;
+  background: #000000 !important;
+  border-bottom: none !important;
   backdrop-filter: none !important;
   box-shadow: none !important;
 }
