@@ -794,25 +794,6 @@ export default function Dashboard() {
                                 <ChevronLeft size={20} />
                             </button>
                         )}
-                        <div className="search-wrapper" style={{ position: 'relative' }}>
-                            <Search size={18} className="search-icon" />
-                            <input
-                                type="text"
-                                placeholder="Search reminders by title, email, description..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                style={{ paddingRight: searchTerm ? '36px' : undefined }}
-                            />
-                            {searchTerm && (
-                                <button
-                                    onClick={() => setSearchTerm('')}
-                                    style={{ position:'absolute', right:'12px', top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', color:'#94afc5', padding:'2px', display:'flex', alignItems:'center' }}
-                                    title="Clear search"
-                                >
-                                    <X size={15} />
-                                </button>
-                            )}
-                        </div>
                     </div>
                     <div className="header-actions">
                         <div className="theme-toggle">
