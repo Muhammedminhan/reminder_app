@@ -465,6 +465,7 @@ export default function Dashboard() {
     const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
     const [editingGroup, setEditingGroup] = useState(null);
     const [activeUserMenu, setActiveUserMenu] = useState(null);
+    const [userMenuPos, setUserMenuPos] = useState({ top: 0, left: 0 });
 
     const [jiraConfig, setJiraConfig] = useState({
         baseUrl: '',
@@ -779,11 +780,19 @@ export default function Dashboard() {
                 {/* Slim top bar — just back button + theme toggle + bell */}
                 <div className="main-header">
                     <div className="header-content-left">
-                        {activeView !== 'dashboard' && (
-                            <button className="back-button animate-fade" onClick={() => setActiveView('dashboard')} title="Go Back">
-                                <ChevronLeft size={20} />
-                            </button>
-                        )}
+                        {activeView !== 'dashboard' ? (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                <button className="back-button animate-fade" onClick={() => setActiveView('dashboard')} title="Back to Dashboard">
+                                    <ChevronLeft size={18} />
+                                </button>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                                    <span style={{ fontSize: 11, color: 'var(--text-dim)', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Dashboard</span>
+                                    <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-main)', lineHeight: 1.2 }}>
+                                        {{ notifications: 'All Triggers', pending: 'Pending Tasks', settings: 'Settings' }[activeView] || activeView}
+                                    </span>
+                                </div>
+                            </div>
+                        ) : null}
                     </div>
                     <div className="header-actions">
                         <div className="theme-toggle">
@@ -1175,42 +1184,46 @@ export default function Dashboard() {
                                             
                                             <div className="team-grid-clean">
                                                 {teamUsers.map(user => (
-                                                    <div key={user.id} className="member-card-clean glass-card">
-                                                        <div className="member-avatar-clean">
-                                                            {user.profilePicture ? (
-                                                                <img src={`${user.profilePicture.startsWith('http') ? user.profilePicture : `${import.meta.env.VITE_API_BASE || 'http://localhost:8000'}${user.profilePicture}`}${user.profilePicture.includes('?') ? '&' : '?'}token=${localStorage.getItem('access_token')}`} alt="" />
-                                                            ) : (
-                                                                <div className="avatar-initials">{user.firstName?.charAt(0) || user.username?.charAt(0)}</div>
-                                                            )}
-                                                            <div className="status-dot-mini online" />
+                                                    <div key={user.id} className="member-card-clean glass-card" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 0, padding: '14px 16px' }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                                                            <div className="member-avatar-clean" style={{ flexShrink: 0 }}>
+                                                                {user.profilePicture ? (
+                                                                    <img src={`${user.profilePicture.startsWith('http') ? user.profilePicture : `${import.meta.env.VITE_API_BASE || 'http://localhost:8000'}${user.profilePicture}`}${user.profilePicture.includes('?') ? '&' : '?'}token=${localStorage.getItem('access_token')}`} alt="" />
+                                                                ) : (
+                                                                    <div className="avatar-initials">{user.firstName?.charAt(0) || user.username?.charAt(0)}</div>
+                                                                )}
+                                                                <div className="status-dot-mini online" />
+                                                            </div>
+                                                            <div style={{ flex: 1, minWidth: 0 }}>
+                                                                <div style={{ fontWeight: 600, fontSize: 14, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{user.firstName} {user.lastName || user.username}</div>
+                                                                <div style={{ fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{user.email}</div>
+                                                            </div>
+                                                            <button onClick={(e) => { e.stopPropagation(); setActiveUserMenu(activeUserMenu === user.id ? null : user.id); }}
+                                                                style={{ flexShrink: 0, width: 26, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 6, border: '1px solid var(--border)', background: activeUserMenu === user.id ? 'var(--bg-hover,#f1f5f9)' : 'transparent', cursor: 'pointer', color: 'var(--text-muted)' }}>
+                                                                <MoreVertical size={13} />
+                                                            </button>
                                                         </div>
-                                                        <div className="member-details-clean">
-                                                            <h4>{user.firstName} {user.lastName || user.username}</h4>
-                                                            <span className="member-email-clean">{user.email}</span>
-                                                            <div className="tag-row">
-                                                                {user.departments?.map(d => (
+                                                        {user.departments?.length > 0 && (
+                                                            <div className="tag-row" style={{ marginTop: 8 }}>
+                                                                {user.departments.map(d => (
                                                                     <span key={d.id} className="mini-tag">{d.name}</span>
                                                                 ))}
                                                             </div>
-                                                        </div>
-                                                        <div style={{ position: 'relative' }}>
-                                                            <button className="action-dots" onClick={(e) => { e.stopPropagation(); setActiveUserMenu(activeUserMenu === user.id ? null : user.id); }}>
-                                                                <MoreVertical size={14} />
-                                                            </button>
-                                                            {activeUserMenu === user.id && (
-                                                                <div className="dropdown-menu" style={{ position: 'absolute', right: 0, top: '100%', zIndex: 100, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, minWidth: 150, boxShadow: '0 4px 16px rgba(0,0,0,0.15)', padding: '4px 0' }}
-                                                                    onClick={(e) => e.stopPropagation()}>
-                                                                    <button style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 16px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-primary)', fontSize: 13 }}
-                                                                        onClick={() => { updateUserAdmin({ variables: { id: user.id, isActive: !user.isActive } }); setActiveUserMenu(null); }}>
-                                                                        {user.isActive ? 'Deactivate' : 'Activate'}
-                                                                    </button>
-                                                                    <button style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 16px', background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: 13 }}
-                                                                        onClick={() => { if (window.confirm(`Delete user ${user.firstName || user.username}?`)) { deleteUserMutation({ variables: { id: user.id } }); setActiveUserMenu(null); } }}>
-                                                                        Delete
-                                                                    </button>
-                                                                </div>
-                                                            )}
-                                                        </div>
+                                                        )}
+                                                        {activeUserMenu === user.id && (
+                                                            <div style={{ marginTop: 10, display: 'flex', gap: 8, borderTop: '1px solid var(--border)', paddingTop: 10 }}>
+                                                                <button
+                                                                    onClick={() => { updateUserAdmin({ variables: { id: user.id, isActive: !user.isActive } }); setActiveUserMenu(null); }}
+                                                                    style={{ flex: 1, padding: '7px 0', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg-hover,#f8fafc)', color: 'var(--text-primary)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                                                                    {user.isActive ? 'Deactivate' : 'Activate'}
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => { if (window.confirm(`Delete ${user.firstName || user.username}?`)) { deleteUserMutation({ variables: { id: user.id } }); setActiveUserMenu(null); } }}
+                                                                    style={{ flex: 1, padding: '7px 0', borderRadius: 7, border: '1px solid #fecaca', background: '#fef2f2', color: '#ef4444', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                                                                    Delete
+                                                                </button>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 ))}
                                             </div>
@@ -1308,10 +1321,10 @@ export default function Dashboard() {
                                             <div style={{ padding: '24px 32px' }}>
                                                 <div style={{ display:'flex', alignItems:'center', gap:'10px', padding:'14px 18px', background:'rgba(0,171,228,0.06)', border:'1px solid rgba(0,171,228,0.18)', borderRadius:'12px', marginBottom:'16px' }}>
                                                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00ABE4" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>
-                                                    <span style={{ fontSize:'13.5px', color:'#0d1f2d', fontWeight:'500' }}>Slack Bot Token is configured. Channel and user notifications are active.</span>
+                                                    <span style={{ fontSize:'13.5px', color:'var(--text-main)', fontWeight:'500' }}>Slack Bot Token is configured. Channel and user notifications are active.</span>
                                                 </div>
-                                                <p style={{ fontSize:'13px', color:'#6b8099', lineHeight:'1.6' }}>
-                                                    To change the token, update the <code style={{ background:'#f4f8fc', padding:'2px 6px', borderRadius:'4px', color:'#00ABE4' }}>SLACK_BOT_TOKEN</code> environment variable on your server and redeploy.
+                                                <p style={{ fontSize:'13px', color:'var(--text-dim)', lineHeight:'1.6' }}>
+                                                    To change the token, update the <code style={{ background:'var(--bg-card-hover, rgba(0,171,228,0.06))', padding:'2px 6px', borderRadius:'4px', color:'#00ABE4' }}>SLACK_BOT_TOKEN</code> environment variable on your server and redeploy.
                                                 </p>
                                             </div>
                                         ) : (
@@ -1324,16 +1337,16 @@ export default function Dashboard() {
                                                 <div style={{ display:'flex', flexDirection:'column', gap:'16px' }}>
                                                     {[
                                                         { step:'1', title:'Create a Slack App', desc: <>Go to <a href="https://api.slack.com/apps" target="_blank" rel="noopener noreferrer" style={{color:'#00ABE4'}}>api.slack.com/apps</a> → <strong>Create New App</strong> → <strong>From scratch</strong>. Name it "NotifyHub" and pick your workspace.</> },
-                                                        { step:'2', title:'Add Bot Scopes', desc: <>Under <strong>OAuth & Permissions → Scopes → Bot Token Scopes</strong>, add: <code style={{background:'#f4f8fc',padding:'2px 6px',borderRadius:'4px',color:'#00ABE4',fontSize:'12px'}}>chat:write</code> <code style={{background:'#f4f8fc',padding:'2px 6px',borderRadius:'4px',color:'#00ABE4',fontSize:'12px'}}>channels:read</code> <code style={{background:'#f4f8fc',padding:'2px 6px',borderRadius:'4px',color:'#00ABE4',fontSize:'12px'}}>users:read</code> <code style={{background:'#f4f8fc',padding:'2px 6px',borderRadius:'4px',color:'#00ABE4',fontSize:'12px'}}>users:read.email</code> <code style={{background:'#f4f8fc',padding:'2px 6px',borderRadius:'4px',color:'#00ABE4',fontSize:'12px'}}>im:write</code></> },
-                                                        { step:'3', title:'Install to Workspace', desc: <>Click <strong>Install to Workspace</strong> and authorise. Copy the <strong>Bot User OAuth Token</strong> (starts with <code style={{background:'#f4f8fc',padding:'2px 6px',borderRadius:'4px',color:'#00ABE4',fontSize:'12px'}}>xoxb-</code>).</> },
-                                                        { step:'4', title:'Invite Bot to Channels', desc: <>In Slack, go to each channel you want NotifyHub to post in and type <code style={{background:'#f4f8fc',padding:'2px 6px',borderRadius:'4px',color:'#00ABE4',fontSize:'12px'}}>/invite @NotifyHub</code>.</> },
-                                                        { step:'5', title:'Set Environment Variable', desc: <>Add <code style={{background:'#f4f8fc',padding:'2px 6px',borderRadius:'4px',color:'#00ABE4',fontSize:'12px'}}>SLACK_BOT_TOKEN=xoxb-your-token</code> to your Cloud Run service environment variables (or <code>.env</code> for local dev), then redeploy.</> },
+                                                        { step:'2', title:'Add Bot Scopes', desc: <>Under <strong>OAuth & Permissions → Scopes → Bot Token Scopes</strong>, add: <code style={{background:'var(--bg-card-hover, rgba(0,171,228,0.06))',padding:'2px 6px',borderRadius:'4px',color:'#00ABE4',fontSize:'12px'}}>chat:write</code> <code style={{background:'var(--bg-card-hover, rgba(0,171,228,0.06))',padding:'2px 6px',borderRadius:'4px',color:'#00ABE4',fontSize:'12px'}}>channels:read</code> <code style={{background:'var(--bg-card-hover, rgba(0,171,228,0.06))',padding:'2px 6px',borderRadius:'4px',color:'#00ABE4',fontSize:'12px'}}>users:read</code> <code style={{background:'var(--bg-card-hover, rgba(0,171,228,0.06))',padding:'2px 6px',borderRadius:'4px',color:'#00ABE4',fontSize:'12px'}}>users:read.email</code> <code style={{background:'var(--bg-card-hover, rgba(0,171,228,0.06))',padding:'2px 6px',borderRadius:'4px',color:'#00ABE4',fontSize:'12px'}}>im:write</code></> },
+                                                        { step:'3', title:'Install to Workspace', desc: <>Click <strong>Install to Workspace</strong> and authorise. Copy the <strong>Bot User OAuth Token</strong> (starts with <code style={{background:'var(--bg-card-hover, rgba(0,171,228,0.06))',padding:'2px 6px',borderRadius:'4px',color:'#00ABE4',fontSize:'12px'}}>xoxb-</code>).</> },
+                                                        { step:'4', title:'Invite Bot to Channels', desc: <>In Slack, go to each channel you want NotifyHub to post in and type <code style={{background:'var(--bg-card-hover, rgba(0,171,228,0.06))',padding:'2px 6px',borderRadius:'4px',color:'#00ABE4',fontSize:'12px'}}>/invite @NotifyHub</code>.</> },
+                                                        { step:'5', title:'Set Environment Variable', desc: <>Add <code style={{background:'var(--bg-card-hover, rgba(0,171,228,0.06))',padding:'2px 6px',borderRadius:'4px',color:'#00ABE4',fontSize:'12px'}}>SLACK_BOT_TOKEN=xoxb-your-token</code> to your Cloud Run service environment variables (or <code>.env</code> for local dev), then redeploy.</> },
                                                     ].map(({ step, title, desc }) => (
                                                         <div key={step} style={{ display:'flex', gap:'14px', alignItems:'flex-start' }}>
                                                             <div style={{ width:'28px', height:'28px', borderRadius:'50%', background:'rgba(0,171,228,0.12)', border:'1.5px solid rgba(0,171,228,0.3)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, fontSize:'12px', fontWeight:'700', color:'#00ABE4' }}>{step}</div>
                                                             <div>
-                                                                <p style={{ fontSize:'13.5px', fontWeight:'600', color:'#0d1f2d', marginBottom:'3px' }}>{title}</p>
-                                                                <p style={{ fontSize:'13px', color:'#6b8099', lineHeight:'1.6', margin:0 }}>{desc}</p>
+                                                                <p style={{ fontSize:'13.5px', fontWeight:'600', color:'var(--text-main)', marginBottom:'3px' }}>{title}</p>
+                                                                <p style={{ fontSize:'13px', color:'var(--text-dim)', lineHeight:'1.6', margin:0 }}>{desc}</p>
                                                             </div>
                                                         </div>
                                                     ))}
@@ -1436,10 +1449,10 @@ export default function Dashboard() {
                                     const aAuditLogs = adminData?.auditLogs || [];
                                     const aAccessTokens = adminData?.accessTokensAdmin || [];
 
-                                    const adminCardStyle = { background:'#FFFFFF', border:'1px solid rgba(0,171,228,0.18)', borderRadius:'20px', marginBottom:'24px', overflow:'hidden', boxShadow:'0 2px 12px rgba(0,171,228,0.07)' };
-                                    const adminHeaderStyle = { padding:'18px 28px', background:'linear-gradient(135deg,rgba(0,171,228,0.07) 0%,rgba(233,241,250,0.5) 100%)', borderBottom:'1px solid rgba(0,171,228,0.12)', display:'flex', justifyContent:'space-between', alignItems:'center' };
+                                    const adminCardStyle = { background:'var(--bg-card)', border:'1px solid var(--border)', borderRadius:'16px', marginBottom:'24px', overflow:'hidden', boxShadow:'0 2px 12px rgba(0,0,0,0.08)' };
+                                    const adminHeaderStyle = { padding:'16px 24px', background:'var(--bg-card-hover, rgba(0,171,228,0.04))', borderBottom:'1px solid var(--border)', display:'flex', justifyContent:'space-between', alignItems:'center' };
                                     const adminBodyStyle = { padding:'20px 24px' };
-                                    const inputStyle = { width:'100%', padding:'10px 14px', borderRadius:'10px', border:'1.5px solid rgba(0,171,228,0.2)', background:'#f4f8fc', fontSize:'13.5px', color:'#0d1f2d', outline:'none', boxSizing:'border-box' };
+                                    const inputStyle = { width:'100%', padding:'10px 14px', borderRadius:'10px', border:'1.5px solid var(--border)', background:'var(--bg-input, var(--bg-card))', fontSize:'13.5px', color:'var(--text-main)', outline:'none', boxSizing:'border-box' };
                                     const smallBtnStyle = (danger) => ({ padding:'6px 14px', borderRadius:'8px', fontSize:'12px', fontWeight:'600', cursor:'pointer', border: danger ? '1px solid rgba(239,68,68,0.3)' : '1.5px solid rgba(0,171,228,0.3)', background: danger ? 'rgba(239,68,68,0.06)' : 'rgba(0,171,228,0.08)', color: danger ? '#dc2626' : '#00ABE4' });
                                     const primaryBtnStyle = { padding:'9px 18px', borderRadius:'10px', fontSize:'13px', fontWeight:'600', cursor:'pointer', background:'#00ABE4', color:'#fff', border:'none', boxShadow:'0 3px 10px rgba(0,171,228,0.3)' };
 
@@ -1448,7 +1461,7 @@ export default function Dashboard() {
                                         {/* Sub-nav */}
                                         <div style={{ display:'flex', gap:'8px', marginBottom:'24px', flexWrap:'wrap' }}>
                                             {[['users','Users',Users],['departments','Departments',Building],['roles','Roles',Shield],['companies','Company',Briefcase],['reminders','Reminders',Bell],['oauth','OAuth Apps',Key],['userroles','User Roles',Users],['sendgrid','SendGrid',Mail],['auditlog','Audit Log',Activity],['accesstokens','Access Tokens',Key],['permissions','Permissions',Lock]].map(([k,label,Icon]) => (
-                                                <button key={k} onClick={() => setAdminTab(k)} style={{ display:'flex', alignItems:'center', gap:'6px', padding:'8px 16px', borderRadius:'10px', fontSize:'13px', fontWeight:'600', cursor:'pointer', border:'1.5px solid', borderColor: adminTab===k ? '#00ABE4' : 'rgba(0,171,228,0.2)', background: adminTab===k ? '#00ABE4' : '#fff', color: adminTab===k ? '#fff' : '#3d5a73', transition:'all 0.18s' }}>
+                                                <button key={k} onClick={() => setAdminTab(k)} style={{ display:'flex', alignItems:'center', gap:'6px', padding:'8px 16px', borderRadius:'10px', fontSize:'13px', fontWeight:'600', cursor:'pointer', border:'1.5px solid', borderColor: adminTab===k ? '#00ABE4' : 'var(--border)', background: adminTab===k ? '#00ABE4' : 'var(--bg-card)', color: adminTab===k ? '#fff' : 'var(--text-dim)', transition:'all 0.18s' }}>
                                                     <Icon size={14} />{label}
                                                 </button>
                                             ))}
@@ -1459,8 +1472,8 @@ export default function Dashboard() {
                                         <div style={adminCardStyle}>
                                             <div style={adminHeaderStyle}>
                                                 <div>
-                                                    <div style={{ fontWeight:'700', color:'#0d1f2d', fontSize:'15px' }}>User Management</div>
-                                                    <div style={{ fontSize:'12px', color:'#6b8099', marginTop:'2px' }}>{aUsers.length} users in workspace</div>
+                                                    <div style={{ fontWeight:'700', color:'var(--text-main)', fontSize:'15px' }}>User Management</div>
+                                                    <div style={{ fontSize:'12px', color:'var(--text-dim)', marginTop:'2px' }}>{aUsers.length} users in workspace</div>
                                                 </div>
                                                 <button style={primaryBtnStyle} onClick={() => setShowCreateUser(v=>!v)}>
                                                     <span style={{ display:'flex', alignItems:'center', gap:'6px' }}><UserPlus size={14} /> Create User</span>
@@ -1469,19 +1482,19 @@ export default function Dashboard() {
 
                                             {showCreateUser && (
                                                 <div style={{ padding:'20px 24px', borderBottom:'1px solid rgba(0,171,228,0.1)', background:'rgba(0,171,228,0.02)' }}>
-                                                    <div style={{ fontWeight:'600', color:'#0d1f2d', marginBottom:'14px', fontSize:'13.5px' }}>New User Details</div>
+                                                    <div style={{ fontWeight:'600', color:'var(--text-main)', marginBottom:'14px', fontSize:'13.5px' }}>New User Details</div>
                                                     <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px', marginBottom:'12px' }}>
                                                         {[['username','Username','e.g. john_doe'],['email','Email','john@company.com'],['password','Password','Min 8 characters'],['firstName','First Name','John'],['lastName','Last Name','Doe']].map(([k,label,ph]) => (
                                                             <div key={k}>
-                                                                <div style={{ fontSize:'11.5px', fontWeight:'700', color:'#6b8099', marginBottom:'5px', textTransform:'uppercase', letterSpacing:'0.06em' }}>{label}</div>
+                                                                <div style={{ fontSize:'11.5px', fontWeight:'700', color:'var(--text-dim)', marginBottom:'5px', textTransform:'uppercase', letterSpacing:'0.06em' }}>{label}</div>
                                                                 <input type={k==='password'?'password':'text'} placeholder={ph} value={newUserForm[k]||''} onChange={e=>setNewUserForm(f=>({...f,[k]:e.target.value}))} style={inputStyle} />
                                                             </div>
                                                         ))}
                                                         <div>
-                                                            <div style={{ fontSize:'11.5px', fontWeight:'700', color:'#6b8099', marginBottom:'8px', textTransform:'uppercase', letterSpacing:'0.06em' }}>Roles</div>
+                                                            <div style={{ fontSize:'11.5px', fontWeight:'700', color:'var(--text-dim)', marginBottom:'8px', textTransform:'uppercase', letterSpacing:'0.06em' }}>Roles</div>
                                                             <div style={{ display:'flex', gap:'10px' }}>
                                                                 {[['isStaff','Staff'],['isSuperuser','Superuser']].map(([k,label]) => (
-                                                                    <label key={k} style={{ display:'flex', alignItems:'center', gap:'6px', fontSize:'13px', cursor:'pointer', color:'#0d1f2d' }}>
+                                                                    <label key={k} style={{ display:'flex', alignItems:'center', gap:'6px', fontSize:'13px', cursor:'pointer', color:'var(--text-main)' }}>
                                                                         <input type="checkbox" checked={!!newUserForm[k]} onChange={e=>setNewUserForm(f=>({...f,[k]:e.target.checked}))} style={{ accentColor:'#00ABE4' }} />{label}
                                                                     </label>
                                                                 ))}
@@ -1503,13 +1516,13 @@ export default function Dashboard() {
                                                 ) : (
                                                     <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
                                                         {aUsers.map(u => (
-                                                            <div key={u.id} style={{ display:'flex', alignItems:'center', gap:'14px', padding:'12px 16px', background:'#f4f8fc', borderRadius:'12px', border:'1px solid rgba(0,171,228,0.1)' }}>
+                                                            <div key={u.id} style={{ display:'flex', alignItems:'center', gap:'14px', padding:'12px 16px', background:'var(--bg-card-hover, rgba(0,171,228,0.06))', borderRadius:'12px', border:'1px solid rgba(0,171,228,0.1)' }}>
                                                                 <div style={{ width:'38px', height:'38px', borderRadius:'10px', background:'linear-gradient(135deg,#00ABE4,#0090c4)', display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontWeight:'700', fontSize:'15px', flexShrink:0 }}>
                                                                     {(u.firstName||u.username||'?')[0].toUpperCase()}
                                                                 </div>
                                                                 <div style={{ flex:1, minWidth:0 }}>
-                                                                    <div style={{ fontWeight:'600', color:'#0d1f2d', fontSize:'13.5px' }}>{u.firstName} {u.lastName} <span style={{ color:'#94afc5', fontWeight:'400' }}>@{u.username}</span></div>
-                                                                    <div style={{ fontSize:'12px', color:'#6b8099', marginTop:'2px' }}>{u.email}</div>
+                                                                    <div style={{ fontWeight:'600', color:'var(--text-main)', fontSize:'13.5px' }}>{u.firstName} {u.lastName} <span style={{ color:'#94afc5', fontWeight:'400' }}>@{u.username}</span></div>
+                                                                    <div style={{ fontSize:'12px', color:'var(--text-dim)', marginTop:'2px' }}>{u.email}</div>
                                                                 </div>
                                                                 <div style={{ display:'flex', gap:'6px', alignItems:'center', flexShrink:0 }}>
                                                                     {u.isSuperuser && <span style={{ padding:'2px 8px', borderRadius:'6px', background:'rgba(239,68,68,0.08)', color:'#dc2626', fontSize:'11px', fontWeight:'700' }}>Superuser</span>}
@@ -1537,8 +1550,8 @@ export default function Dashboard() {
                                         <div style={adminCardStyle}>
                                             <div style={adminHeaderStyle}>
                                                 <div>
-                                                    <div style={{ fontWeight:'700', color:'#0d1f2d', fontSize:'15px' }}>Departments</div>
-                                                    <div style={{ fontSize:'12px', color:'#6b8099', marginTop:'2px' }}>{aDepts.length} departments</div>
+                                                    <div style={{ fontWeight:'700', color:'var(--text-main)', fontSize:'15px' }}>Departments</div>
+                                                    <div style={{ fontSize:'12px', color:'var(--text-dim)', marginTop:'2px' }}>{aDepts.length} departments</div>
                                                 </div>
                                                 <button style={primaryBtnStyle} onClick={() => setShowCreateDept(v=>!v)}>
                                                     <span style={{ display:'flex', alignItems:'center', gap:'6px' }}><Plus size={14} /> New Department</span>
@@ -1547,7 +1560,7 @@ export default function Dashboard() {
                                             {showCreateDept && (
                                                 <div style={{ padding:'16px 24px', borderBottom:'1px solid rgba(0,171,228,0.1)', background:'rgba(0,171,228,0.02)', display:'flex', gap:'10px', alignItems:'flex-end' }}>
                                                     <div style={{ flex:1 }}>
-                                                        <div style={{ fontSize:'11.5px', fontWeight:'700', color:'#6b8099', marginBottom:'5px', textTransform:'uppercase', letterSpacing:'0.06em' }}>Department Name</div>
+                                                        <div style={{ fontSize:'11.5px', fontWeight:'700', color:'var(--text-dim)', marginBottom:'5px', textTransform:'uppercase', letterSpacing:'0.06em' }}>Department Name</div>
                                                         <input placeholder="e.g. Engineering" value={newDeptName} onChange={e=>setNewDeptName(e.target.value)} style={inputStyle} />
                                                     </div>
                                                     <button style={primaryBtnStyle} onClick={() => createDept({ variables:{ name:newDeptName, companyId:data?.me?.company?.id } })}>
@@ -1562,10 +1575,10 @@ export default function Dashboard() {
                                                 ) : (
                                                     <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(200px,1fr))', gap:'10px' }}>
                                                         {aDepts.map(d => (
-                                                            <div key={d.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'12px 16px', background:'#f4f8fc', borderRadius:'12px', border:'1px solid rgba(0,171,228,0.1)' }}>
+                                                            <div key={d.id} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'12px 16px', background:'var(--bg-card-hover, rgba(0,171,228,0.06))', borderRadius:'12px', border:'1px solid rgba(0,171,228,0.1)' }}>
                                                                 <div style={{ display:'flex', alignItems:'center', gap:'8px' }}>
                                                                     <Building size={14} color="#00ABE4" />
-                                                                    <span style={{ fontWeight:'600', color:'#0d1f2d', fontSize:'13.5px' }}>{d.name}</span>
+                                                                    <span style={{ fontWeight:'600', color:'var(--text-main)', fontSize:'13.5px' }}>{d.name}</span>
                                                                 </div>
                                                                 <button style={smallBtnStyle(true)} onClick={() => { if(window.confirm(`Delete department ${d.name}?`)) deleteDept({ variables:{ id:d.id } }); }}>
                                                                     <Trash2 size={12} />
@@ -1583,8 +1596,8 @@ export default function Dashboard() {
                                         <div style={adminCardStyle}>
                                             <div style={adminHeaderStyle}>
                                                 <div>
-                                                    <div style={{ fontWeight:'700', color:'#0d1f2d', fontSize:'15px' }}>Roles & Permissions</div>
-                                                    <div style={{ fontSize:'12px', color:'#6b8099', marginTop:'2px' }}>{aRoles.length} roles · {aPerms.length} permissions</div>
+                                                    <div style={{ fontWeight:'700', color:'var(--text-main)', fontSize:'15px' }}>Roles & Permissions</div>
+                                                    <div style={{ fontSize:'12px', color:'var(--text-dim)', marginTop:'2px' }}>{aRoles.length} roles · {aPerms.length} permissions</div>
                                                 </div>
                                                 <button style={primaryBtnStyle} onClick={() => setShowCreateRole(v=>!v)}>
                                                     <span style={{ display:'flex', alignItems:'center', gap:'6px' }}><Plus size={14} /> New Role</span>
@@ -1594,11 +1607,11 @@ export default function Dashboard() {
                                                 <div style={{ padding:'16px 24px', borderBottom:'1px solid rgba(0,171,228,0.1)', background:'rgba(0,171,228,0.02)' }}>
                                                     <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px', marginBottom:'12px' }}>
                                                         <div>
-                                                            <div style={{ fontSize:'11.5px', fontWeight:'700', color:'#6b8099', marginBottom:'5px', textTransform:'uppercase', letterSpacing:'0.06em' }}>Role Name</div>
+                                                            <div style={{ fontSize:'11.5px', fontWeight:'700', color:'var(--text-dim)', marginBottom:'5px', textTransform:'uppercase', letterSpacing:'0.06em' }}>Role Name</div>
                                                             <input placeholder="e.g. HR Manager" value={newRoleForm.name} onChange={e=>setNewRoleForm(f=>({...f,name:e.target.value}))} style={inputStyle} />
                                                         </div>
                                                         <div>
-                                                            <div style={{ fontSize:'11.5px', fontWeight:'700', color:'#6b8099', marginBottom:'5px', textTransform:'uppercase', letterSpacing:'0.06em' }}>Description</div>
+                                                            <div style={{ fontSize:'11.5px', fontWeight:'700', color:'var(--text-dim)', marginBottom:'5px', textTransform:'uppercase', letterSpacing:'0.06em' }}>Description</div>
                                                             <input placeholder="What can this role do?" value={newRoleForm.description} onChange={e=>setNewRoleForm(f=>({...f,description:e.target.value}))} style={inputStyle} />
                                                         </div>
                                                     </div>
@@ -1612,15 +1625,15 @@ export default function Dashboard() {
                                             )}
                                             <div style={adminBodyStyle}>
                                                 {aRoles.length === 0 ? (
-                                                    <div style={{ textAlign:'center', padding:'30px', color:'#94afc5' }}>No roles yet. Run <code style={{ background:'#f4f8fc', padding:'2px 6px', borderRadius:'4px', color:'#00ABE4' }}>setup_permissions --create-roles</code> to seed defaults.</div>
+                                                    <div style={{ textAlign:'center', padding:'30px', color:'#94afc5' }}>No roles yet. Run <code style={{ background:'var(--bg-card-hover, rgba(0,171,228,0.06))', padding:'2px 6px', borderRadius:'4px', color:'#00ABE4' }}>setup_permissions --create-roles</code> to seed defaults.</div>
                                                 ) : (
                                                     <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
                                                         {aRoles.map(r => (
-                                                            <div key={r.id} style={{ padding:'14px 16px', background:'#f4f8fc', borderRadius:'12px', border:'1px solid rgba(0,171,228,0.1)' }}>
+                                                            <div key={r.id} style={{ padding:'14px 16px', background:'var(--bg-card-hover, rgba(0,171,228,0.06))', borderRadius:'12px', border:'1px solid rgba(0,171,228,0.1)' }}>
                                                                 <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'8px' }}>
                                                                     <div>
-                                                                        <span style={{ fontWeight:'700', color:'#0d1f2d', fontSize:'13.5px' }}>{r.name}</span>
-                                                                        {r.description && <span style={{ marginLeft:'8px', fontSize:'12px', color:'#6b8099' }}>{r.description}</span>}
+                                                                        <span style={{ fontWeight:'700', color:'var(--text-main)', fontSize:'13.5px' }}>{r.name}</span>
+                                                                        {r.description && <span style={{ marginLeft:'8px', fontSize:'12px', color:'var(--text-dim)' }}>{r.description}</span>}
                                                                     </div>
                                                                     <button style={smallBtnStyle(true)} onClick={() => { if(window.confirm(`Delete role ${r.name}?`)) deleteRole({ variables:{ id:r.id } }); }}>
                                                                         <Trash2 size={12} />
@@ -1645,8 +1658,8 @@ export default function Dashboard() {
                                         <div style={adminCardStyle}>
                                             <div style={adminHeaderStyle}>
                                                 <div>
-                                                    <div style={{ fontWeight:'700', color:'#0d1f2d', fontSize:'15px' }}>Companies</div>
-                                                    <div style={{ fontSize:'12px', color:'#6b8099', marginTop:'2px' }}>{aCompanies.length} {aCompanies.length===1?'company':'companies'}</div>
+                                                    <div style={{ fontWeight:'700', color:'var(--text-main)', fontSize:'15px' }}>Companies</div>
+                                                    <div style={{ fontSize:'12px', color:'var(--text-dim)', marginTop:'2px' }}>{aCompanies.length} {aCompanies.length===1?'company':'companies'}</div>
                                                 </div>
                                                 <button style={primaryBtnStyle} onClick={() => setShowCreateCompany(v=>!v)}>
                                                     <span style={{ display:'flex', alignItems:'center', gap:'6px' }}><Plus size={14} /> Add Company</span>
@@ -1654,11 +1667,11 @@ export default function Dashboard() {
                                             </div>
                                             {showCreateCompany && (
                                                 <div style={{ padding:'20px 24px', borderBottom:'1px solid rgba(0,171,228,0.1)', background:'rgba(0,171,228,0.02)' }}>
-                                                    <div style={{ fontWeight:'600', color:'#0d1f2d', marginBottom:'14px', fontSize:'13.5px' }}>New Company</div>
+                                                    <div style={{ fontWeight:'600', color:'var(--text-main)', marginBottom:'14px', fontSize:'13.5px' }}>New Company</div>
                                                     <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px', marginBottom:'12px' }}>
                                                         {[['name','Company Name','e.g. Acme Corp'],['email','Email','contact@company.com'],['address','Address','123 Main St'],['website','Website','https://company.com']].map(([k,label,ph]) => (
                                                             <div key={k}>
-                                                                <div style={{ fontSize:'11.5px', fontWeight:'700', color:'#6b8099', marginBottom:'5px', textTransform:'uppercase', letterSpacing:'0.06em' }}>{label}</div>
+                                                                <div style={{ fontSize:'11.5px', fontWeight:'700', color:'var(--text-dim)', marginBottom:'5px', textTransform:'uppercase', letterSpacing:'0.06em' }}>{label}</div>
                                                                 <input placeholder={ph} value={newCompanyForm[k]} onChange={e=>setNewCompanyForm(f=>({...f,[k]:e.target.value}))} style={inputStyle} />
                                                             </div>
                                                         ))}
@@ -1680,13 +1693,13 @@ export default function Dashboard() {
                                                             const deptCount = aDepts.filter(d => d.company?.name === c.name).length;
                                                             const userCount = aUsers.filter(u => u.departments?.length > 0).length;
                                                             return (
-                                                            <div key={c.id} style={{ display:'flex', alignItems:'center', gap:'14px', padding:'14px 18px', background:'#f4f8fc', borderRadius:'12px', border:'1px solid rgba(0,171,228,0.1)' }}>
+                                                            <div key={c.id} style={{ display:'flex', alignItems:'center', gap:'14px', padding:'14px 18px', background:'var(--bg-card-hover, rgba(0,171,228,0.06))', borderRadius:'12px', border:'1px solid rgba(0,171,228,0.1)' }}>
                                                                 <div style={{ width:'44px', height:'44px', borderRadius:'12px', background:'linear-gradient(135deg,#00ABE4,#0090c4)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, fontSize:'18px', fontWeight:'800', color:'#fff' }}>
                                                                     {c.name[0].toUpperCase()}
                                                                 </div>
                                                                 <div style={{ flex:1 }}>
-                                                                    <div style={{ fontWeight:'700', color:'#0d1f2d', fontSize:'14px' }}>{c.name}</div>
-                                                                    <div style={{ fontSize:'12px', color:'#6b8099', marginTop:'2px' }}>{c.email} {c.website && <span>· <a href={c.website} target="_blank" rel="noopener noreferrer" style={{ color:'#00ABE4' }}>{c.website}</a></span>}</div>
+                                                                    <div style={{ fontWeight:'700', color:'var(--text-main)', fontSize:'14px' }}>{c.name}</div>
+                                                                    <div style={{ fontSize:'12px', color:'var(--text-dim)', marginTop:'2px' }}>{c.email} {c.website && <span>· <a href={c.website} target="_blank" rel="noopener noreferrer" style={{ color:'#00ABE4' }}>{c.website}</a></span>}</div>
                                                                 </div>
                                                                 <div style={{ display:'flex', gap:'8px', alignItems:'center' }}>
                                                                     <span style={{ padding:'3px 10px', borderRadius:'8px', background:'rgba(0,171,228,0.08)', color:'#00ABE4', fontSize:'11.5px', fontWeight:'600' }}>{deptCount} depts</span>
@@ -1709,8 +1722,8 @@ export default function Dashboard() {
                                         <div style={adminCardStyle}>
                                             <div style={adminHeaderStyle}>
                                                 <div>
-                                                    <div style={{ fontWeight:'700', color:'#0d1f2d', fontSize:'15px' }}>All Reminders</div>
-                                                    <div style={{ fontSize:'12px', color:'#6b8099', marginTop:'2px' }}>{aReminders.length} total reminders across all companies</div>
+                                                    <div style={{ fontWeight:'700', color:'var(--text-main)', fontSize:'15px' }}>All Reminders</div>
+                                                    <div style={{ fontSize:'12px', color:'var(--text-dim)', marginTop:'2px' }}>{aReminders.length} total reminders across all companies</div>
                                                 </div>
                                             </div>
                                             <div style={adminBodyStyle}>
@@ -1729,7 +1742,7 @@ export default function Dashboard() {
                                                             <tbody>
                                                                 {aReminders.map(r => (
                                                                     <tr key={r.id} style={{ borderBottom:'1px solid rgba(0,171,228,0.07)' }}>
-                                                                        <td style={{ padding:'10px 14px', fontWeight:'600', color:'#0d1f2d', maxWidth:'200px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r.title}</td>
+                                                                        <td style={{ padding:'10px 14px', fontWeight:'600', color:'var(--text-main)', maxWidth:'200px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{r.title}</td>
                                                                         <td style={{ padding:'10px 14px', color:'#3d5a73' }}>{r.receiverEmail}</td>
                                                                         <td style={{ padding:'10px 14px', color:'#3d5a73' }}>{r.company?.name || '—'}</td>
                                                                         <td style={{ padding:'10px 14px' }}>
@@ -1754,8 +1767,8 @@ export default function Dashboard() {
                                         <div style={adminCardStyle}>
                                             <div style={adminHeaderStyle}>
                                                 <div>
-                                                    <div style={{ fontWeight:'700', color:'#0d1f2d', fontSize:'15px' }}>OAuth Applications</div>
-                                                    <div style={{ fontSize:'12px', color:'#6b8099', marginTop:'2px' }}>{aOAuthApps.length} registered OAuth apps</div>
+                                                    <div style={{ fontWeight:'700', color:'var(--text-main)', fontSize:'15px' }}>OAuth Applications</div>
+                                                    <div style={{ fontSize:'12px', color:'var(--text-dim)', marginTop:'2px' }}>{aOAuthApps.length} registered OAuth apps</div>
                                                 </div>
                                             </div>
                                             <div style={adminBodyStyle}>
@@ -1764,13 +1777,13 @@ export default function Dashboard() {
                                                 ) : (
                                                     <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
                                                         {aOAuthApps.map(app => (
-                                                            <div key={app.id} style={{ display:'flex', alignItems:'center', gap:'14px', padding:'14px 18px', background:'#f4f8fc', borderRadius:'12px', border:'1px solid rgba(0,171,228,0.1)' }}>
+                                                            <div key={app.id} style={{ display:'flex', alignItems:'center', gap:'14px', padding:'14px 18px', background:'var(--bg-card-hover, rgba(0,171,228,0.06))', borderRadius:'12px', border:'1px solid rgba(0,171,228,0.1)' }}>
                                                                 <div style={{ width:'40px', height:'40px', borderRadius:'12px', background:'linear-gradient(135deg,#6366f1,#4f46e5)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
                                                                     <Key size={18} color="#fff" />
                                                                 </div>
                                                                 <div style={{ flex:1 }}>
-                                                                    <div style={{ fontWeight:'700', color:'#0d1f2d', fontSize:'14px' }}>{app.name || '(unnamed)'}</div>
-                                                                    <div style={{ fontSize:'12px', color:'#6b8099', marginTop:'2px', fontFamily:'monospace' }}>
+                                                                    <div style={{ fontWeight:'700', color:'var(--text-main)', fontSize:'14px' }}>{app.name || '(unnamed)'}</div>
+                                                                    <div style={{ fontSize:'12px', color:'var(--text-dim)', marginTop:'2px', fontFamily:'monospace' }}>
                                                                         {app.clientId ? app.clientId.slice(0,8) + '••••••••' + app.clientId.slice(-4) : '—'}
                                                                     </div>
                                                                 </div>
@@ -1791,8 +1804,8 @@ export default function Dashboard() {
                                         <div style={adminCardStyle}>
                                             <div style={adminHeaderStyle}>
                                                 <div>
-                                                    <div style={{ fontWeight:'700', color:'#0d1f2d', fontSize:'15px' }}>User Role Assignments</div>
-                                                    <div style={{ fontSize:'12px', color:'#6b8099', marginTop:'2px' }}>{aUserRoles.length} active assignments</div>
+                                                    <div style={{ fontWeight:'700', color:'var(--text-main)', fontSize:'15px' }}>User Role Assignments</div>
+                                                    <div style={{ fontSize:'12px', color:'var(--text-dim)', marginTop:'2px' }}>{aUserRoles.length} active assignments</div>
                                                 </div>
                                                 <button style={primaryBtnStyle} onClick={() => setShowAssignRole(v=>!v)}>
                                                     <span style={{ display:'flex', alignItems:'center', gap:'6px' }}><Shield size={14} /> Assign Role</span>
@@ -1800,17 +1813,17 @@ export default function Dashboard() {
                                             </div>
                                             {showAssignRole && (
                                                 <div style={{ padding:'20px 24px', borderBottom:'1px solid rgba(0,171,228,0.1)', background:'rgba(0,171,228,0.02)' }}>
-                                                    <div style={{ fontWeight:'600', color:'#0d1f2d', marginBottom:'14px', fontSize:'13.5px' }}>Assign Role to User</div>
+                                                    <div style={{ fontWeight:'600', color:'var(--text-main)', marginBottom:'14px', fontSize:'13.5px' }}>Assign Role to User</div>
                                                     <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px', marginBottom:'12px' }}>
                                                         <div>
-                                                            <div style={{ fontSize:'11.5px', fontWeight:'700', color:'#6b8099', marginBottom:'5px', textTransform:'uppercase', letterSpacing:'0.06em' }}>User</div>
+                                                            <div style={{ fontSize:'11.5px', fontWeight:'700', color:'var(--text-dim)', marginBottom:'5px', textTransform:'uppercase', letterSpacing:'0.06em' }}>User</div>
                                                             <select value={assignRoleForm.userId} onChange={e=>setAssignRoleForm(f=>({...f,userId:e.target.value}))} style={inputStyle}>
                                                                 <option value="">Select user…</option>
                                                                 {aUsers.map(u => <option key={u.id} value={u.id}>{u.username} ({u.email})</option>)}
                                                             </select>
                                                         </div>
                                                         <div>
-                                                            <div style={{ fontSize:'11.5px', fontWeight:'700', color:'#6b8099', marginBottom:'5px', textTransform:'uppercase', letterSpacing:'0.06em' }}>Role</div>
+                                                            <div style={{ fontSize:'11.5px', fontWeight:'700', color:'var(--text-dim)', marginBottom:'5px', textTransform:'uppercase', letterSpacing:'0.06em' }}>Role</div>
                                                             <select value={assignRoleForm.roleId} onChange={e=>setAssignRoleForm(f=>({...f,roleId:e.target.value}))} style={inputStyle}>
                                                                 <option value="">Select role…</option>
                                                                 {aRoles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
@@ -1831,20 +1844,20 @@ export default function Dashboard() {
                                                         <thead>
                                                             <tr style={{ borderBottom:'2px solid rgba(0,171,228,0.15)' }}>
                                                                 {['User','Role','Company','Status','Assigned At',''].map(h => (
-                                                                    <th key={h} style={{ padding:'8px 12px', textAlign:'left', fontWeight:'700', color:'#6b8099', fontSize:'11.5px', textTransform:'uppercase', letterSpacing:'0.05em' }}>{h}</th>
+                                                                    <th key={h} style={{ padding:'8px 12px', textAlign:'left', fontWeight:'700', color:'var(--text-dim)', fontSize:'11.5px', textTransform:'uppercase', letterSpacing:'0.05em' }}>{h}</th>
                                                                 ))}
                                                             </tr>
                                                         </thead>
                                                         <tbody>
                                                             {aUserRoles.map(ur => (
                                                                 <tr key={ur.id} style={{ borderBottom:'1px solid rgba(0,171,228,0.07)' }}>
-                                                                    <td style={{ padding:'10px 12px', color:'#0d1f2d' }}>{ur.user?.username}<div style={{ fontSize:'11px', color:'#94afc5' }}>{ur.user?.email}</div></td>
-                                                                    <td style={{ padding:'10px 12px', color:'#0d1f2d', fontWeight:'600' }}>{ur.role?.name}</td>
-                                                                    <td style={{ padding:'10px 12px', color:'#6b8099' }}>{ur.company?.name || '—'}</td>
+                                                                    <td style={{ padding:'10px 12px', color:'var(--text-main)' }}>{ur.user?.username}<div style={{ fontSize:'11px', color:'#94afc5' }}>{ur.user?.email}</div></td>
+                                                                    <td style={{ padding:'10px 12px', color:'var(--text-main)', fontWeight:'600' }}>{ur.role?.name}</td>
+                                                                    <td style={{ padding:'10px 12px', color:'var(--text-dim)' }}>{ur.company?.name || '—'}</td>
                                                                     <td style={{ padding:'10px 12px' }}>
                                                                         <span style={{ padding:'3px 8px', borderRadius:'6px', fontSize:'11.5px', fontWeight:'700', background: ur.isActive ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)', color: ur.isActive ? '#16a34a' : '#dc2626' }}>{ur.isActive ? 'Active' : 'Inactive'}</span>
                                                                     </td>
-                                                                    <td style={{ padding:'10px 12px', color:'#6b8099', fontSize:'12px' }}>{ur.assignedAt ? new Date(ur.assignedAt).toLocaleDateString() : '—'}</td>
+                                                                    <td style={{ padding:'10px 12px', color:'var(--text-dim)', fontSize:'12px' }}>{ur.assignedAt ? new Date(ur.assignedAt).toLocaleDateString() : '—'}</td>
                                                                     <td style={{ padding:'10px 12px' }}>
                                                                         {ur.isActive && <button style={smallBtnStyle(true)} onClick={() => removeRoleFromUser({ variables: { userId: ur.user?.id, roleId: ur.role?.id } })}>Remove</button>}
                                                                     </td>
@@ -1862,8 +1875,8 @@ export default function Dashboard() {
                                         <div style={adminCardStyle}>
                                             <div style={adminHeaderStyle}>
                                                 <div>
-                                                    <div style={{ fontWeight:'700', color:'#0d1f2d', fontSize:'15px' }}>SendGrid Domain Auths</div>
-                                                    <div style={{ fontSize:'12px', color:'#6b8099', marginTop:'2px' }}>{aSendGridAuths.length} domain authentication records</div>
+                                                    <div style={{ fontWeight:'700', color:'var(--text-main)', fontSize:'15px' }}>SendGrid Domain Auths</div>
+                                                    <div style={{ fontSize:'12px', color:'var(--text-dim)', marginTop:'2px' }}>{aSendGridAuths.length} domain authentication records</div>
                                                 </div>
                                             </div>
                                             <div style={adminBodyStyle}>
@@ -1874,20 +1887,20 @@ export default function Dashboard() {
                                                         <thead>
                                                             <tr style={{ borderBottom:'2px solid rgba(0,171,228,0.15)' }}>
                                                                 {['Domain','Customer ID','Verified','User','Created At'].map(h => (
-                                                                    <th key={h} style={{ padding:'8px 12px', textAlign:'left', fontWeight:'700', color:'#6b8099', fontSize:'11.5px', textTransform:'uppercase', letterSpacing:'0.05em' }}>{h}</th>
+                                                                    <th key={h} style={{ padding:'8px 12px', textAlign:'left', fontWeight:'700', color:'var(--text-dim)', fontSize:'11.5px', textTransform:'uppercase', letterSpacing:'0.05em' }}>{h}</th>
                                                                 ))}
                                                             </tr>
                                                         </thead>
                                                         <tbody>
                                                             {aSendGridAuths.map(sg => (
                                                                 <tr key={sg.id} style={{ borderBottom:'1px solid rgba(0,171,228,0.07)' }}>
-                                                                    <td style={{ padding:'10px 12px', color:'#0d1f2d', fontWeight:'600', fontFamily:'monospace' }}>{sg.domain}</td>
-                                                                    <td style={{ padding:'10px 12px', color:'#6b8099', fontFamily:'monospace', fontSize:'12px' }}>{sg.customerId || '—'}</td>
+                                                                    <td style={{ padding:'10px 12px', color:'var(--text-main)', fontWeight:'600', fontFamily:'monospace' }}>{sg.domain}</td>
+                                                                    <td style={{ padding:'10px 12px', color:'var(--text-dim)', fontFamily:'monospace', fontSize:'12px' }}>{sg.customerId || '—'}</td>
                                                                     <td style={{ padding:'10px 12px' }}>
                                                                         <span style={{ padding:'3px 8px', borderRadius:'6px', fontSize:'11.5px', fontWeight:'700', background: sg.isVerified ? 'rgba(34,197,94,0.1)' : 'rgba(251,191,36,0.1)', color: sg.isVerified ? '#16a34a' : '#d97706' }}>{sg.isVerified ? 'Verified' : 'Pending'}</span>
                                                                     </td>
-                                                                    <td style={{ padding:'10px 12px', color:'#6b8099' }}>{sg.user?.username || '—'}</td>
-                                                                    <td style={{ padding:'10px 12px', color:'#6b8099', fontSize:'12px' }}>{sg.createdAt ? new Date(sg.createdAt).toLocaleDateString() : '—'}</td>
+                                                                    <td style={{ padding:'10px 12px', color:'var(--text-dim)' }}>{sg.user?.username || '—'}</td>
+                                                                    <td style={{ padding:'10px 12px', color:'var(--text-dim)', fontSize:'12px' }}>{sg.createdAt ? new Date(sg.createdAt).toLocaleDateString() : '—'}</td>
                                                                 </tr>
                                                             ))}
                                                         </tbody>
@@ -1902,8 +1915,8 @@ export default function Dashboard() {
                                         <div style={adminCardStyle}>
                                             <div style={adminHeaderStyle}>
                                                 <div>
-                                                    <div style={{ fontWeight:'700', color:'#0d1f2d', fontSize:'15px' }}>Audit Log</div>
-                                                    <div style={{ fontSize:'12px', color:'#6b8099', marginTop:'2px' }}>Last {aAuditLogs.length} entries — read only</div>
+                                                    <div style={{ fontWeight:'700', color:'var(--text-main)', fontSize:'15px' }}>Audit Log</div>
+                                                    <div style={{ fontSize:'12px', color:'var(--text-dim)', marginTop:'2px' }}>Last {aAuditLogs.length} entries — read only</div>
                                                 </div>
                                             </div>
                                             <div style={adminBodyStyle}>
@@ -1914,7 +1927,7 @@ export default function Dashboard() {
                                                         <thead>
                                                             <tr style={{ borderBottom:'2px solid rgba(0,171,228,0.15)' }}>
                                                                 {['Actor','Action','Object','Type','Timestamp'].map(h => (
-                                                                    <th key={h} style={{ padding:'8px 12px', textAlign:'left', fontWeight:'700', color:'#6b8099', fontSize:'11.5px', textTransform:'uppercase', letterSpacing:'0.05em' }}>{h}</th>
+                                                                    <th key={h} style={{ padding:'8px 12px', textAlign:'left', fontWeight:'700', color:'var(--text-dim)', fontSize:'11.5px', textTransform:'uppercase', letterSpacing:'0.05em' }}>{h}</th>
                                                                 ))}
                                                             </tr>
                                                         </thead>
@@ -1924,11 +1937,11 @@ export default function Dashboard() {
                                                                 const ac = actionColors[log.action] || { bg:'rgba(0,171,228,0.1)', color:'#00ABE4', label:'Other' };
                                                                 return (
                                                                     <tr key={log.id} style={{ borderBottom:'1px solid rgba(0,171,228,0.07)' }}>
-                                                                        <td style={{ padding:'10px 12px', color:'#0d1f2d', fontWeight:'600' }}>{log.actorUsername}</td>
+                                                                        <td style={{ padding:'10px 12px', color:'var(--text-main)', fontWeight:'600' }}>{log.actorUsername}</td>
                                                                         <td style={{ padding:'10px 12px' }}><span style={{ padding:'3px 8px', borderRadius:'6px', fontSize:'11.5px', fontWeight:'700', background:ac.bg, color:ac.color }}>{ac.label}</span></td>
-                                                                        <td style={{ padding:'10px 12px', color:'#0d1f2d', maxWidth:'200px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{log.objectRepr}</td>
-                                                                        <td style={{ padding:'10px 12px', color:'#6b8099' }}>{log.contentTypeName}</td>
-                                                                        <td style={{ padding:'10px 12px', color:'#6b8099', fontSize:'12px' }}>{log.timestamp ? new Date(log.timestamp).toLocaleString() : '—'}</td>
+                                                                        <td style={{ padding:'10px 12px', color:'var(--text-main)', maxWidth:'200px', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{log.objectRepr}</td>
+                                                                        <td style={{ padding:'10px 12px', color:'var(--text-dim)' }}>{log.contentTypeName}</td>
+                                                                        <td style={{ padding:'10px 12px', color:'var(--text-dim)', fontSize:'12px' }}>{log.timestamp ? new Date(log.timestamp).toLocaleString() : '—'}</td>
                                                                     </tr>
                                                                 );
                                                             })}
@@ -1944,8 +1957,8 @@ export default function Dashboard() {
                                         <div style={adminCardStyle}>
                                             <div style={adminHeaderStyle}>
                                                 <div>
-                                                    <div style={{ fontWeight:'700', color:'#0d1f2d', fontSize:'15px' }}>OAuth Access Tokens</div>
-                                                    <div style={{ fontSize:'12px', color:'#6b8099', marginTop:'2px' }}>{aAccessTokens.length} tokens — read only</div>
+                                                    <div style={{ fontWeight:'700', color:'var(--text-main)', fontSize:'15px' }}>OAuth Access Tokens</div>
+                                                    <div style={{ fontSize:'12px', color:'var(--text-dim)', marginTop:'2px' }}>{aAccessTokens.length} tokens — read only</div>
                                                 </div>
                                             </div>
                                             <div style={adminBodyStyle}>
@@ -1956,17 +1969,17 @@ export default function Dashboard() {
                                                         <thead>
                                                             <tr style={{ borderBottom:'2px solid rgba(0,171,228,0.15)' }}>
                                                                 {['User','Token','Expires','Scope'].map(h => (
-                                                                    <th key={h} style={{ padding:'8px 12px', textAlign:'left', fontWeight:'700', color:'#6b8099', fontSize:'11.5px', textTransform:'uppercase', letterSpacing:'0.05em' }}>{h}</th>
+                                                                    <th key={h} style={{ padding:'8px 12px', textAlign:'left', fontWeight:'700', color:'var(--text-dim)', fontSize:'11.5px', textTransform:'uppercase', letterSpacing:'0.05em' }}>{h}</th>
                                                                 ))}
                                                             </tr>
                                                         </thead>
                                                         <tbody>
                                                             {aAccessTokens.map(tok => (
                                                                 <tr key={tok.id} style={{ borderBottom:'1px solid rgba(0,171,228,0.07)' }}>
-                                                                    <td style={{ padding:'10px 12px', color:'#0d1f2d', fontWeight:'600' }}>{tok.userUsername}</td>
-                                                                    <td style={{ padding:'10px 12px', fontFamily:'monospace', color:'#6b8099', fontSize:'12px' }}>{tok.tokenMasked}</td>
-                                                                    <td style={{ padding:'10px 12px', color:'#6b8099', fontSize:'12px' }}>{tok.expires ? new Date(tok.expires).toLocaleString() : '—'}</td>
-                                                                    <td style={{ padding:'10px 12px', color:'#6b8099', fontSize:'12px' }}>{tok.scope || '—'}</td>
+                                                                    <td style={{ padding:'10px 12px', color:'var(--text-main)', fontWeight:'600' }}>{tok.userUsername}</td>
+                                                                    <td style={{ padding:'10px 12px', fontFamily:'monospace', color:'var(--text-dim)', fontSize:'12px' }}>{tok.tokenMasked}</td>
+                                                                    <td style={{ padding:'10px 12px', color:'var(--text-dim)', fontSize:'12px' }}>{tok.expires ? new Date(tok.expires).toLocaleString() : '—'}</td>
+                                                                    <td style={{ padding:'10px 12px', color:'var(--text-dim)', fontSize:'12px' }}>{tok.scope || '—'}</td>
                                                                 </tr>
                                                             ))}
                                                         </tbody>
@@ -1981,8 +1994,8 @@ export default function Dashboard() {
                                         <div style={adminCardStyle}>
                                             <div style={adminHeaderStyle}>
                                                 <div>
-                                                    <div style={{ fontWeight:'700', color:'#0d1f2d', fontSize:'15px' }}>Permissions</div>
-                                                    <div style={{ fontSize:'12px', color:'#6b8099', marginTop:'2px' }}>{aPerms.length} permissions defined</div>
+                                                    <div style={{ fontWeight:'700', color:'var(--text-main)', fontSize:'15px' }}>Permissions</div>
+                                                    <div style={{ fontSize:'12px', color:'var(--text-dim)', marginTop:'2px' }}>{aPerms.length} permissions defined</div>
                                                 </div>
                                                 <button style={primaryBtnStyle} onClick={() => setShowCreatePermission(v=>!v)}>
                                                     <span style={{ display:'flex', alignItems:'center', gap:'6px' }}><Lock size={14} /> Create Permission</span>
@@ -1990,11 +2003,11 @@ export default function Dashboard() {
                                             </div>
                                             {showCreatePermission && (
                                                 <div style={{ padding:'20px 24px', borderBottom:'1px solid rgba(0,171,228,0.1)', background:'rgba(0,171,228,0.02)' }}>
-                                                    <div style={{ fontWeight:'600', color:'#0d1f2d', marginBottom:'14px', fontSize:'13.5px' }}>New Permission</div>
+                                                    <div style={{ fontWeight:'600', color:'var(--text-main)', marginBottom:'14px', fontSize:'13.5px' }}>New Permission</div>
                                                     <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px', marginBottom:'12px' }}>
                                                         {[['code','Code','e.g. users.manage_roles'],['name','Name','Human-readable name'],['category','Category','e.g. Users'],['description','Description','Optional description']].map(([k,label,ph]) => (
                                                             <div key={k}>
-                                                                <div style={{ fontSize:'11.5px', fontWeight:'700', color:'#6b8099', marginBottom:'5px', textTransform:'uppercase', letterSpacing:'0.06em' }}>{label}</div>
+                                                                <div style={{ fontSize:'11.5px', fontWeight:'700', color:'var(--text-dim)', marginBottom:'5px', textTransform:'uppercase', letterSpacing:'0.06em' }}>{label}</div>
                                                                 <input placeholder={ph} value={newPermissionForm[k]||''} onChange={e=>setNewPermissionForm(f=>({...f,[k]:e.target.value}))} style={inputStyle} />
                                                             </div>
                                                         ))}
@@ -2013,15 +2026,15 @@ export default function Dashboard() {
                                                         <thead>
                                                             <tr style={{ borderBottom:'2px solid rgba(0,171,228,0.15)' }}>
                                                                 {['Code','Name','Category','Status',''].map(h => (
-                                                                    <th key={h} style={{ padding:'8px 12px', textAlign:'left', fontWeight:'700', color:'#6b8099', fontSize:'11.5px', textTransform:'uppercase', letterSpacing:'0.05em' }}>{h}</th>
+                                                                    <th key={h} style={{ padding:'8px 12px', textAlign:'left', fontWeight:'700', color:'var(--text-dim)', fontSize:'11.5px', textTransform:'uppercase', letterSpacing:'0.05em' }}>{h}</th>
                                                                 ))}
                                                             </tr>
                                                         </thead>
                                                         <tbody>
                                                             {aPerms.map(p => (
                                                                 <tr key={p.id} style={{ borderBottom:'1px solid rgba(0,171,228,0.07)' }}>
-                                                                    <td style={{ padding:'10px 12px', fontFamily:'monospace', color:'#0d1f2d', fontSize:'12px' }}>{p.code}</td>
-                                                                    <td style={{ padding:'10px 12px', color:'#0d1f2d', fontWeight:'600' }}>{p.name}</td>
+                                                                    <td style={{ padding:'10px 12px', fontFamily:'monospace', color:'var(--text-main)', fontSize:'12px' }}>{p.code}</td>
+                                                                    <td style={{ padding:'10px 12px', color:'var(--text-main)', fontWeight:'600' }}>{p.name}</td>
                                                                     <td style={{ padding:'10px 12px' }}>
                                                                         <span style={{ padding:'3px 8px', borderRadius:'6px', fontSize:'11.5px', fontWeight:'700', background:'rgba(0,171,228,0.1)', color:'#00ABE4' }}>{p.category || '—'}</span>
                                                                     </td>
