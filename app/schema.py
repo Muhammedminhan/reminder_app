@@ -208,7 +208,10 @@ class UserRoleType(DjangoObjectType):
 
 class GroupType(DjangoObjectType):
     members = graphene.List(lambda: UserType)
-    
+
+    def resolve_members(self, info):
+        return self.members.all() if self.pk else []
+
     class Meta:
         model = Group
         fields = (

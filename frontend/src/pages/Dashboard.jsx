@@ -358,10 +358,6 @@ const CREATE_GROUP = gql`
       group {
         id
         name
-        members {
-          id
-          username
-        }
       }
     }
   }
@@ -374,10 +370,6 @@ const UPDATE_GROUP = gql`
       group {
         id
         name
-        members {
-          id
-          username
-        }
       }
     }
   }
@@ -472,6 +464,7 @@ export default function Dashboard() {
     const [selectedMembers, setSelectedMembers] = useState([]);
     const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
     const [editingGroup, setEditingGroup] = useState(null);
+    const [activeUserMenu, setActiveUserMenu] = useState(null);
 
     const [jiraConfig, setJiraConfig] = useState({
         baseUrl: '',
@@ -568,7 +561,7 @@ export default function Dashboard() {
                 showToast('Failed to create group');
             }
         },
-        onError: (err) => showToast('Error: ' + err.message)
+        onError: (err) => { console.error('createGroup error:', err); const msg = err.graphQLErrors?.[0]?.message || err.networkError?.result?.errors?.[0]?.message || err.message; showToast('❌ ' + msg, 'error'); }
     });
 
     const [updateGroup, { loading: updatingGroup }] = useMutation(UPDATE_GROUP, {
@@ -743,7 +736,7 @@ export default function Dashboard() {
     );
 
     return (
-        <div className="dashboard-container">
+        <div className="dashboard-container" onClick={() => setActiveUserMenu(null)}>
             <aside className="sidebar">
                 <div className="sidebar-logo">
                     <div className="sidebar-logo-icon">
@@ -1200,7 +1193,24 @@ export default function Dashboard() {
                                                                 ))}
                                                             </div>
                                                         </div>
-                                                        <button className="action-dots"><MoreVertical size={14} /></button>
+                                                        <div style={{ position: 'relative' }}>
+                                                            <button className="action-dots" onClick={(e) => { e.stopPropagation(); setActiveUserMenu(activeUserMenu === user.id ? null : user.id); }}>
+                                                                <MoreVertical size={14} />
+                                                            </button>
+                                                            {activeUserMenu === user.id && (
+                                                                <div className="dropdown-menu" style={{ position: 'absolute', right: 0, top: '100%', zIndex: 100, background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, minWidth: 150, boxShadow: '0 4px 16px rgba(0,0,0,0.15)', padding: '4px 0' }}
+                                                                    onClick={(e) => e.stopPropagation()}>
+                                                                    <button style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 16px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-primary)', fontSize: 13 }}
+                                                                        onClick={() => { updateUserAdmin({ variables: { id: user.id, isActive: !user.isActive } }); setActiveUserMenu(null); }}>
+                                                                        {user.isActive ? 'Deactivate' : 'Activate'}
+                                                                    </button>
+                                                                    <button style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 16px', background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: 13 }}
+                                                                        onClick={() => { if (window.confirm(`Delete user ${user.firstName || user.username}?`)) { deleteUserMutation({ variables: { id: user.id } }); setActiveUserMenu(null); } }}>
+                                                                        Delete
+                                                                    </button>
+                                                                </div>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                 ))}
                                             </div>
@@ -2064,49 +2074,61 @@ export default function Dashboard() {
             
             {isGroupModalOpen && (
                 <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && setIsGroupModalOpen(false)}>
-                    <div className="modal-container animate-fade">
+                    <div className="modal-container animate-fade" style={{ maxWidth: 480, width: '90%' }} onClick={e => e.stopPropagation()}>
                         <button onClick={() => setIsGroupModalOpen(false)} className="modal-close"><X size={20} /></button>
                         <div className="modal-header">
                             <h2>{editingGroup ? 'Edit Group' : 'Create New Group'}</h2>
-                            <p>Manage collaboration units within your company.</p>
+                            <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 4 }}>Organize users into a collaboration team.</p>
                         </div>
-                        <div className="form-group">
-                            <label>Group Name</label>
-                            <input 
-                                type="text" 
-                                value={groupName} 
+                        <div className="form-group" style={{ marginTop: 20 }}>
+                            <label style={{ fontWeight: 600, fontSize: 13, marginBottom: 6, display: 'block' }}>Group Name *</label>
+                            <input
+                                type="text"
+                                value={groupName}
                                 onChange={e => setGroupName(e.target.value)}
-                                placeholder="Sales Team / Engineers / etc."
+                                placeholder="e.g. Engineering Team"
+                                style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-input, var(--bg-card))', color: 'var(--text-primary)', fontSize: 14, boxSizing: 'border-box' }}
+                                autoFocus
                             />
                         </div>
-                        <div className="form-group">
-                            <label>Select Members</label>
-                            <div className="members-select-grid">
+                        <div className="form-group" style={{ marginTop: 16 }}>
+                            <label style={{ fontWeight: 600, fontSize: 13, marginBottom: 8, display: 'block' }}>Members ({selectedMembers.length} selected)</label>
+                            <div style={{ maxHeight: 260, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8, padding: '4px 0' }}>
                                 {teamUsers.map(u => (
-                                    <label key={u.id} className="member-select-item">
-                                        <input 
-                                            type="checkbox" 
+                                    <label key={u.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '8px 14px', cursor: 'pointer', borderRadius: 6, transition: 'background 0.15s' }}
+                                        onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-hover, rgba(0,0,0,0.04))'}
+                                        onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                                        <input
+                                            type="checkbox"
                                             checked={selectedMembers.includes(u.id)}
                                             onChange={e => {
-                                                if(e.target.checked) setSelectedMembers([...selectedMembers, u.id]);
-                                                else setSelectedMembers(selectedMembers.filter(id => id !== u.id));
+                                                if (e.target.checked) setSelectedMembers(prev => [...prev, u.id]);
+                                                else setSelectedMembers(prev => prev.filter(id => id !== u.id));
                                             }}
+                                            style={{ width: 16, height: 16, accentColor: 'var(--brand, #0ea5e9)', cursor: 'pointer', flexShrink: 0 }}
                                         />
-                                        <span>{u.firstName || u.username}</span>
+                                        <div style={{ width: 32, height: 32, borderRadius: '50%', background: 'var(--brand, #0ea5e9)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: 13, flexShrink: 0 }}>
+                                            {(u.firstName || u.username || '?').charAt(0).toUpperCase()}
+                                        </div>
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                            <div style={{ fontWeight: 500, fontSize: 14, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.firstName ? `${u.firstName} ${u.lastName || ''}`.trim() : u.username}</div>
+                                            <div style={{ fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{u.email}</div>
+                                        </div>
                                     </label>
                                 ))}
                             </div>
                         </div>
-                        <div className="modal-footer">
-                            <button className="btn-secondary" onClick={() => setIsGroupModalOpen(false)}>Cancel</button>
-                            <button 
-                                className="btn-primary" 
-                                disabled={creatingGroup || updatingGroup}
+                        <div className="modal-footer" style={{ marginTop: 24, display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                            <button className="btn-secondary" onClick={() => { setIsGroupModalOpen(false); setGroupName(''); setSelectedMembers([]); }}>Cancel</button>
+                            <button
+                                className="btn-primary"
+                                disabled={creatingGroup || updatingGroup || !groupName.trim()}
                                 onClick={(e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
-                                    if(editingGroup) updateGroup({ variables: { id: editingGroup.id, name: groupName, memberIds: selectedMembers }});
-                                    else createGroup({ variables: { name: groupName, memberIds: selectedMembers }});
+                                    if (!groupName.trim()) return;
+                                    if (editingGroup) updateGroup({ variables: { id: editingGroup.id, name: groupName.trim(), memberIds: selectedMembers } });
+                                    else createGroup({ variables: { name: groupName.trim(), memberIds: selectedMembers } });
                                 }}
                             >
                                 {creatingGroup ? 'Creating...' : updatingGroup ? 'Updating...' : (editingGroup ? 'Update Group' : 'Create Group')}

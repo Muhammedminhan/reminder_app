@@ -1085,12 +1085,8 @@ def _send_reminder_email(reminder):
             _record_delivery(reminder, recipients, subject, 'sent', sender=from_email_addr)
             return True
         # If 403 or 4xx likely due to sender domain/auth, retry once with default_from (if different)
-        should_retry_with_default = (str(status).startswith('4') and default_from and default_from != from_email_addr)
-        # Also force retry if we used a clearly placeholder domain
-        if branded_from and default_from and default_from != from_email_addr:
-            # Heuristic: example.com or missing company domain often fails auth
-            if 'example.com' in branded_from or branded_from.endswith('.example.com'):
-                should_retry_with_default = True
+        # Retry with default sender on any 4xx or exception (status=0) — branded domain may not be verified in SendGrid
+        should_retry_with_default = ((str(status).startswith('4') or status == 0) and default_from and default_from != from_email_addr)
         if should_retry_with_default:
             logger.warning(f"[REMINDER_EMAIL_RETRY] id={reminder.id} first_status={status} first_sender='{from_email_addr}' retry_sender='{default_from}' body_snippet={(body or '')[:300]}")
             ok2, status2, body2 = _do_send(default_from)
