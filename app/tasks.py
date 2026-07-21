@@ -63,7 +63,6 @@ def get_total_emails_for_date(target_date):
 def check_and_notify_admin_for_email_threshold():
     """Check reminders scheduled for today and the next 7 days, notify admin if >=80 emails for any day."""
     admin_email = getattr(settings, 'ADMIN_EMAIL', None)
-    logger.info(f"ADMIN_EMAIL: {admin_email}")
     if not admin_email:
         logger.warning("ADMIN_EMAIL not set in settings.")
         return

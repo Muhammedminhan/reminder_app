@@ -477,7 +477,7 @@ else:
     MEDIA_URL = '/media/'
     MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
-ADMIN_EMAIL = os.environ.get('ADMIN_EMAIL', 'admin@example.com')
+ADMIN_EMAIL = os.environ.get('ADMIN_EMAIL')  # Must be set via environment variable; no hardcoded default
 
 # ── Recurring reminder cleanup ────────────────────────────────────────────────
 # Sent reminder rows older than this many days are soft-deleted by the
