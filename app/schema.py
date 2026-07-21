@@ -443,8 +443,10 @@ class Query(graphene.ObjectType):
 
     def resolve_user(self, info, id):
         user = get_authenticated_user(info)
+        if not user:
+            return None
         qs = get_user_model().objects.select_related('company').prefetch_related('departments')
-        if user and not user.is_superuser and getattr(user, 'company_id', None):
+        if not user.is_superuser and getattr(user, 'company_id', None):
             qs = qs.filter(company_id=user.company_id)
         return qs.filter(pk=id).first()
 
@@ -476,9 +478,11 @@ class Query(graphene.ObjectType):
         return qs.filter(pk=id).first()
 
     def resolve_departments(self, info):
-        qs = Department.objects.all().select_related('company')
         user = get_authenticated_user(info)
-        if user and not user.is_superuser:
+        if not user:
+            return Department.objects.none()
+        qs = Department.objects.all().select_related('company')
+        if not user.is_superuser:
             if getattr(user, 'company_id', None):
                 qs = qs.filter(company_id=user.company_id)
             else:
@@ -486,9 +490,11 @@ class Query(graphene.ObjectType):
         return qs
 
     def resolve_department(self, info, id):
-        qs = Department.objects.select_related('company')
         user = get_authenticated_user(info)
-        if user and not user.is_superuser and getattr(user, 'company_id', None):
+        if not user:
+            return None
+        qs = Department.objects.select_related('company')
+        if not user.is_superuser and getattr(user, 'company_id', None):
             qs = qs.filter(company_id=user.company_id)
         return qs.filter(pk=id).first()
 
@@ -519,9 +525,11 @@ class Query(graphene.ObjectType):
         return qs.filter(pk=id).first()
 
     def resolve_sendgrid_domain_auths(self, info):
-        qs = SendGridDomainAuth.objects.all().select_related('user', 'user__company')
         user = get_authenticated_user(info)
-        if user and not user.is_superuser:
+        if not user:
+            return SendGridDomainAuth.objects.none()
+        qs = SendGridDomainAuth.objects.all().select_related('user', 'user__company')
+        if not user.is_superuser:
             if getattr(user, 'company_id', None):
                 qs = qs.filter(user__company_id=user.company_id)
             else:
@@ -529,32 +537,38 @@ class Query(graphene.ObjectType):
         return qs
 
     def resolve_sendgrid_domain_auth(self, info, id):
-        qs = SendGridDomainAuth.objects.select_related('user', 'user__company')
         user = get_authenticated_user(info)
-        if user and not user.is_superuser and getattr(user, 'company_id', None):
+        if not user:
+            return None
+        qs = SendGridDomainAuth.objects.select_related('user', 'user__company')
+        if not user.is_superuser and getattr(user, 'company_id', None):
             qs = qs.filter(user__company_id=user.company_id)
         return qs.filter(pk=id).first()
 
     def resolve_scheduled_tasks(self, info, task_type=None, is_completed=None):
-        qs = ScheduledTask.objects.all().select_related('company')
         user = get_authenticated_user(info)
-        if user and not user.is_superuser:
+        if not user:
+            return ScheduledTask.objects.none()
+        qs = ScheduledTask.objects.all().select_related('company')
+        if not user.is_superuser:
             if getattr(user, 'company_id', None):
                 qs = qs.filter(company_id=user.company_id)
             else:
                 qs = qs.none()
-        
+
         if task_type:
             qs = qs.filter(task_type=task_type)
         if is_completed is not None:
             qs = qs.filter(is_completed=is_completed)
-        
+
         return qs
 
     def resolve_scheduled_task(self, info, id):
-        qs = ScheduledTask.objects.select_related('company')
         user = get_authenticated_user(info)
-        if user and not user.is_superuser and getattr(user, 'company_id', None):
+        if not user:
+            return None
+        qs = ScheduledTask.objects.select_related('company')
+        if not user.is_superuser and getattr(user, 'company_id', None):
             qs = qs.filter(company_id=user.company_id)
         return qs.filter(pk=id).first()
     

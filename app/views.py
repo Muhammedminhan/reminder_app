@@ -1213,6 +1213,10 @@ def reset_password(request):
         user.set_password(new_password)
         user.save()
 
+        from oauth2_provider.models import AccessToken, RefreshToken
+        AccessToken.objects.filter(user=user).delete()
+        RefreshToken.objects.filter(user=user).delete()
+
         logger.info(f"PASSWORD RESET SUCCESS: User={user.username}")
         return JsonResponse({'ok': True, 'message': 'Password has been reset successfully'})
     except json.JSONDecodeError:
@@ -1418,9 +1422,9 @@ def google_auth_callback(request):
                 username = f"{username}_{secrets.token_hex(3)}"
             
             from .models import Company
-            company, _ = Company.objects.get_or_create(
+            company = Company.objects.create(
                 name=f"{first_name or username}'s Team",
-                defaults={'email': email}
+                email=email,
             )
             
             user = User.objects.create_user(
