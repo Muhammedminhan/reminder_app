@@ -53,6 +53,38 @@ import CreateReminderModal from '../components/CreateReminderModal';
 import UpdateProfileModal from '../components/UpdateProfileModal';
 import Toast, { useToast } from '../components/Toast';
 
+// Download a protected media URL via Authorization header (avoids token-in-URL leakage)
+function downloadProtectedFile(url) {
+  const token = localStorage.getItem('access_token') || '';
+  fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+    .then(r => r.ok ? r.blob() : Promise.reject(r.status))
+    .then(blob => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      const parts = url.split('/');
+      a.download = parts[parts.length - 1] || 'attachment';
+      a.click();
+      URL.revokeObjectURL(a.href);
+    })
+    .catch(() => {});
+}
+
+// <img> that fetches via Authorization header so the token never appears in the URL
+function AuthImg({ src, alt, ...props }) {
+  const [objectUrl, setObjectUrl] = React.useState('');
+  React.useEffect(() => {
+    if (!src) return;
+    const token = localStorage.getItem('access_token') || '';
+    let revoked = false;
+    fetch(src, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.ok ? r.blob() : Promise.reject())
+      .then(blob => { if (!revoked) setObjectUrl(URL.createObjectURL(blob)); })
+      .catch(() => {});
+    return () => { revoked = true; if (objectUrl) URL.revokeObjectURL(objectUrl); };
+  }, [src]);
+  return objectUrl ? <img src={objectUrl} alt={alt} {...props} /> : null;
+}
+
 // ── Admin mutations ──────────────────────────────────────────────────────────
 
 const CREATE_USER = gql`
@@ -903,15 +935,13 @@ export default function Dashboard() {
                                                                     {reminder.attachments?.length > 0 && (
                                                                         <div title={`${reminder.attachments.length} attachments`} style={{ display: 'flex', gap: '4px' }}>
                                                                             {reminder.attachments.map(att => (
-                                                                                <a 
-                                                                                    key={att.id} 
-                                                                                    href={`${import.meta.env.VITE_API_BASE || 'http://localhost:8000'}${att.url}?token=${localStorage.getItem('access_token') || ''}`}
-                                                                                    target="_blank"
-                                                                                    rel="noopener noreferrer"
-                                                                                    style={{ color: 'var(--primary-glow)', display: 'flex' }}
+                                                                                <button
+                                                                                    key={att.id}
+                                                                                    onClick={() => downloadProtectedFile(`${import.meta.env.VITE_API_BASE || 'http://localhost:8000'}${att.url}`)}
+                                                                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary-glow)', display: 'flex', padding: 0 }}
                                                                                 >
                                                                                     <Paperclip size={12} />
-                                                                                </a>
+                                                                                </button>
                                                                             ))}
                                                                         </div>
                                                                     )}
@@ -1195,7 +1225,7 @@ export default function Dashboard() {
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                                                             <div className="member-avatar-clean" style={{ flexShrink: 0 }}>
                                                                 {user.profilePicture ? (
-                                                                    <img src={`${user.profilePicture.startsWith('http') ? user.profilePicture : `${import.meta.env.VITE_API_BASE || 'http://localhost:8000'}${user.profilePicture}`}${user.profilePicture.includes('?') ? '&' : '?'}token=${localStorage.getItem('access_token')}`} alt="" />
+                                                                    <AuthImg src={user.profilePicture.startsWith('http') ? user.profilePicture : `${import.meta.env.VITE_API_BASE || 'http://localhost:8000'}${user.profilePicture}`} alt="" />
                                                                 ) : (
                                                                     <div className="avatar-initials">{user.firstName?.charAt(0) || user.username?.charAt(0)}</div>
                                                                 )}
@@ -2300,15 +2330,14 @@ export default function Dashboard() {
                                         <label>Attachments</label>
                                         <div className="attachments-list">
                                             {selectedReminder.attachments.map(att => (
-                                                <a 
-                                                    key={att.id} 
-                                                    href={`${import.meta.env.VITE_API_BASE || 'http://localhost:8000'}${att.url}?token=${localStorage.getItem('access_token') || ''}`}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
+                                                <button
+                                                    key={att.id}
+                                                    onClick={() => downloadProtectedFile(`${import.meta.env.VITE_API_BASE || 'http://localhost:8000'}${att.url}`)}
                                                     className="att-link"
+                                                    style={{ background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left' }}
                                                 >
                                                     <Paperclip size={14} /> {att.filename}
-                                                </a>
+                                                </button>
                                             ))}
                                         </div>
                                     </div>
