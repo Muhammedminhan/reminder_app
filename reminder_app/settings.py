@@ -30,14 +30,14 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # No default — fail fast in production. For local dev, set SECRET_KEY in .env.
 SECRET_KEY = config('SECRET_KEY', default='change-me-please')
 _is_cloud_run = bool(os.environ.get('K_SERVICE'))
-if _is_cloud_run and (not SECRET_KEY or SECRET_KEY == 'change-me-please'):
+# SECURITY WARNING: don't run with debug turned on in production!
+DEBUG = config('DEBUG', default=False, cast=bool)
+if (not DEBUG or _is_cloud_run) and (not SECRET_KEY or SECRET_KEY == 'change-me-please'):
     from django.core.exceptions import ImproperlyConfigured
     raise ImproperlyConfigured(
         'SECRET_KEY must be set to a strong random string in production. '
         'Generate with: python -c "import secrets; print(secrets.token_urlsafe(50))"'
     )
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = config('DEBUG', default=False, cast=bool)
 if DEBUG and _is_cloud_run:
     from django.core.exceptions import ImproperlyConfigured
     raise ImproperlyConfigured("DEBUG=True is not allowed in Cloud Run (K_SERVICE is set).")
@@ -205,13 +205,12 @@ if REDIS_URL:
         }
     }
 elif not DEBUG:
-    import warnings
-    warnings.warn(
-        'REDIS_URL is not set in a non-DEBUG environment. '
-        'Rate limiting and MFA tokens will NOT work correctly across '
-        'multiple Cloud Run instances. Set REDIS_URL to a shared Redis/Memorystore.',
-        RuntimeWarning,
-        stacklevel=2,
+    from django.core.exceptions import ImproperlyConfigured
+    raise ImproperlyConfigured(
+        'REDIS_URL must be set in a non-DEBUG environment. '
+        'Without Redis, rate limiting and MFA challenge tokens are per-process '
+        'and will not work correctly across multiple workers or instances. '
+        'Set REDIS_URL to a shared Redis/Memorystore.'
     )
 # else (DEBUG=True, no Redis): LocMemCache is fine for local development.
 

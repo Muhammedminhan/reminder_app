@@ -21,6 +21,7 @@ import requests
 import logging
 import json
 import base64
+import urllib.parse
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +88,8 @@ def process_tasks_webhook(request):
         process_scheduled_tasks()
         return JsonResponse({"status": "success", "message": "Tasks processed successfully"})
     except Exception as e:
-        return JsonResponse({"status": "error", "message": str(e)}, status=500)
+        logger.error(f"Error processing scheduled tasks: {e}")
+        return JsonResponse({"status": "error", "message": "Internal error"}, status=500)
 
 
 @csrf_exempt
@@ -109,7 +111,7 @@ def process_reminders_webhook(request):
         })
     except Exception as e:
         logger.error(f"Error processing reminders: {e}")
-        return JsonResponse({"status": "error", "message": str(e)}, status=500)
+        return JsonResponse({"status": "error", "message": "Internal error"}, status=500)
 
 
 @csrf_exempt
@@ -139,7 +141,7 @@ def fallback_notification_webhook(request):
         return JsonResponse({"status": "success", "message": "Fallback notification logic executed."})
     except Exception as e:
         logger.error(f"Error in fallback notification webhook: {e}")
-        return JsonResponse({"status": "error", "message": str(e)}, status=500)
+        return JsonResponse({"status": "error", "message": "Internal error"}, status=500)
 
 
 @csrf_exempt
@@ -577,11 +579,31 @@ def mfa_confirm(request):
     """
     Confirm the user's TOTP device by verifying a first code and marking device confirmed.
     Body: { code: \"123456\" }
+
+    Rate limited per IP (10/min) and per user (5/min) to prevent TOTP brute-force
+    during the enrollment confirmation window (CWE-307).
     """
+    if getattr(settings, 'RATE_LIMIT_ENABLED', True):
+        ip = request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR', 'unknown')).split(',')[0].strip()
+        ip_key = f"rl:mfa_confirm:ip:{ip}"
+        ip_attempts = cache.get(ip_key, 0)
+        if ip_attempts >= 10:
+            return JsonResponse({'ok': False, 'message': 'Too many attempts, please try again later.'}, status=429)
+        cache.set(ip_key, ip_attempts + 1, 60)
+
     try:
         user = _get_oauth_user(request)
         if not user:
             return JsonResponse({'ok': False, 'message': 'Authentication required'}, status=401)
+
+        # Per-user limit checked after authentication to bind to a real identity
+        if getattr(settings, 'RATE_LIMIT_ENABLED', True):
+            user_key = f"rl:mfa_confirm:user:{user.id}"
+            user_attempts = cache.get(user_key, 0)
+            if user_attempts >= 5:
+                return JsonResponse({'ok': False, 'message': 'Too many attempts, please try again later.'}, status=429)
+            cache.set(user_key, user_attempts + 1, 60)
+
         data = json.loads(request.body or '{}')
         code = str(data.get('code', '')).strip()
         if not code:
@@ -822,7 +844,7 @@ def process_slack_pending_reminders_webhook(request):
         return JsonResponse(result, status=status)
     except Exception as e:
         logger.error(f"process_slack_pending_reminders_webhook error: {e}")
-        return JsonResponse({"ok": False, "error": str(e)}, status=500)
+        return JsonResponse({"ok": False, "error": "Internal error"}, status=500)
 
 
 # SSO Views
@@ -843,13 +865,15 @@ def sso_login(request, domain):
         saml_settings = SAMLHelper.get_settings(sso_settings, host=request.get_host())
         auth = OneLogin_Saml2_Auth(req, saml_settings)
 
-        # Determine redirect url after login (could be a parameter or default to dashboard)
-        return_to = request.GET.get('next', '/')
+        # Validate next is a relative path to prevent open redirect
+        next_url = request.GET.get('next', '/')
+        parsed = urllib.parse.urlparse(next_url)
+        return_to = next_url if (not parsed.netloc and not parsed.scheme) else '/'
 
         return redirect(auth.login(return_to=return_to))
     except Exception as e:
         logger.error(f"SSO Login Error: {e}")
-        return HttpResponseServerError(f"SSO Error: {e}")
+        return HttpResponseServerError("SSO authentication failed.")
 
 @csrf_exempt
 def sso_acs(request, company_id):
@@ -872,7 +896,7 @@ def sso_acs(request, company_id):
         if errors:
             reason = auth.get_last_error_reason()
             logger.error(f"SAML Errors: {errors}, Reason: {reason}")
-            return HttpResponseForbidden(f"SAML Error: {errors}. Reason: {reason}")
+            return HttpResponseForbidden("SAML authentication failed.")
 
         if not auth.is_authenticated():
             return HttpResponseForbidden("SAML Authentication Failed.")
@@ -941,15 +965,18 @@ def sso_acs(request, company_id):
         # Backend must be specified for manual login
         login(request, user, backend='django.contrib.auth.backends.ModelBackend')
 
-        # Redirect to intended page or dashboard
-        if 'RelayState' in request.POST and request.POST['RelayState'] != OneLogin_Saml2_Utils.get_self_url(req):
-            return redirect(auth.redirect_to(request.POST['RelayState']))
+        # Redirect to intended page — validate RelayState is same-origin to prevent open redirect
+        relay_state = request.POST.get('RelayState', '')
+        if relay_state and relay_state != OneLogin_Saml2_Utils.get_self_url(req):
+            parsed_relay = urllib.parse.urlparse(relay_state)
+            if not parsed_relay.netloc and not parsed_relay.scheme:
+                return redirect(auth.redirect_to(relay_state))
 
         return redirect('/')
 
     except Exception as e:
         logger.error(f"SSO ACS Error: {e}")
-        return HttpResponseServerError(f"SSO ACS Error: {e}")
+        return HttpResponseServerError("SSO authentication failed.")
 
 @csrf_exempt
 def sso_acs_legacy(request):
@@ -1090,8 +1117,8 @@ def forgot_password(request):
         if user:
             signer = TimestampSigner()
             token = signer.sign(user.email)
-            # Log the token so it can be used for testing
-            logger.info(f"PASSWORD RESET REQUEST: User={user.username}, Email={email}")
+            if getattr(settings, 'DEBUG', False):
+                logger.debug(f"PASSWORD RESET REQUEST: User={user.username}")
             
             # Send email if SendGrid is configured
             reset_link = f"{request.scheme}://{request.get_host()}/reset-password?token={token}"
@@ -1235,31 +1262,38 @@ def upload_profile_picture(request):
         return JsonResponse({'ok': False, 'message': 'No file provided'}, status=400)
     
     file = request.FILES['profile_picture']
-    # Basic validation
-    if not file.name.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp')):
+
+    # Extension whitelist — SVG excluded (XSS vector)
+    allowed_extensions = ('.png', '.jpg', '.jpeg', '.gif', '.webp')
+    if not file.name.lower().endswith(allowed_extensions):
         logger.warning(f"Profile upload failed: Invalid file extension: {file.name}")
-        return JsonResponse({'ok': False, 'message': 'Invalid file type. Please upload a PNG, JPG, or WEBP image.'}, status=400)
-    
+        return JsonResponse({'ok': False, 'message': 'Invalid file type. Please upload a PNG, JPG, GIF, or WEBP image.'}, status=400)
+
     # Align size limit with model's clean method (2MB)
     if file.size > 2 * 1024 * 1024:
         logger.warning(f"Profile upload failed: File too large: {file.size}")
         return JsonResponse({'ok': False, 'message': 'File too large (max 2MB)'}, status=400)
 
+    # Magic-byte validation — same pattern as _validate_attachment (CWE-434)
+    error = _validate_attachment(file)
+    if error:
+        logger.warning(f"Profile upload failed magic-byte check: {file.name} — {error}")
+        return JsonResponse({'ok': False, 'message': 'Invalid image content.'}, status=400)
+
     try:
         user.profile_picture = file
         user.save()
-        
+
         profile_picture_url = request.build_absolute_uri(user.profile_picture.url) if user.profile_picture else None
-        
+
         return JsonResponse({
-            'ok': True, 
+            'ok': True,
             'message': 'Profile picture updated',
             'profile_picture_url': profile_picture_url
         })
     except Exception as e:
-        logger.error(f"Profile picture save error: {str(e)}")
-        # If it's a ValidationError, we might want to be more specific, but usually it's caught by clean() above
-        return JsonResponse({'ok': False, 'message': f'Failed to save image: {str(e)}'}, status=400)
+        logger.error(f"Profile picture save error: {e}")
+        return JsonResponse({'ok': False, 'message': 'Failed to save image.'}, status=400)
 
 
 # ---- Google OAuth2 Integration ----
@@ -1417,7 +1451,7 @@ def google_auth_callback(request):
         # Create a new access token
         local_token = secrets.token_urlsafe(32)
         expires = timezone.now() + timedelta(hours=1)
-        
+
         AccessToken.objects.create(
             user=user,
             application=app,
@@ -1425,15 +1459,52 @@ def google_auth_callback(request):
             expires=expires,
             scope='read write'
         )
-        
-        # 5. Redirect back to frontend with the token
+
+        # 5. Redirect back to frontend via a short-lived one-time code so the
+        # real access token is never exposed in the URL (browser history, logs,
+        # Referer headers). The frontend exchanges the code for the token via
+        # POST /google/token-exchange/ within 60 seconds.
+        one_time_code = secrets.token_urlsafe(24)
+        cache.set(f"google_auth_code:{_hash_token(one_time_code)}", local_token, timeout=60)
+
         frontend_url = config('FRONTEND_URL', default='http://localhost:5173')
-        target_url = f"{frontend_url}/login?token={local_token}"
+        target_url = f"{frontend_url}/login?code={one_time_code}"
         return redirect(target_url)
         
     except Exception as e:
         logger.error(f"Google Callback Error: {str(e)}")
         return JsonResponse({'ok': False, 'message': 'Authentication failed during Google handshake'}, status=500)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def google_token_exchange(request):
+    """Exchange the one-time code issued by google_auth_callback for the real access token.
+
+    The code is valid for 60 seconds and can be used exactly once.
+    This avoids exposing the access token in the URL (CWE-598 / open redirect logs).
+    """
+    try:
+        data = json.loads(request.body or '{}')
+        code = str(data.get('code') or '').strip()
+        if not code or len(code) > 64:
+            return JsonResponse({'ok': False, 'message': 'Invalid code'}, status=400)
+
+        cache_key = f"google_auth_code:{_hash_token(code)}"
+        token = cache.get(cache_key)
+        if not token:
+            return JsonResponse({'ok': False, 'message': 'Code expired or already used'}, status=400)
+
+        # One-time use — delete immediately
+        cache.delete(cache_key)
+        return JsonResponse({'ok': True, 'access_token': token})
+    except json.JSONDecodeError:
+        return JsonResponse({'ok': False, 'message': 'Invalid JSON'}, status=400)
+    except Exception as e:
+        logger.error(f"google_token_exchange error: {e}")
+        return JsonResponse({'ok': False, 'message': 'Internal error'}, status=500)
+
+
 def serve_protected_media(request, path):
     """Serve media files only to authenticated users — with company scoping.
 
@@ -1520,7 +1591,13 @@ def serve_protected_media(request, path):
             return HttpResponseServerError("Media file temporarily unavailable.")
 
     # ── Local filesystem mode (dev) ───────────────────────────────────────────
-    file_path = os.path.join(settings.MEDIA_ROOT, path)
+    # Resolve the real absolute path and confirm it sits inside MEDIA_ROOT to
+    # prevent path traversal via ../ sequences in the `path` URL parameter.
+    media_root_real = os.path.realpath(settings.MEDIA_ROOT)
+    file_path = os.path.realpath(os.path.join(settings.MEDIA_ROOT, path))
+    if not file_path.startswith(media_root_real + os.sep):
+        return HttpResponseForbidden("Invalid media path.")
+
     if not os.path.exists(file_path):
         raise Http404("Media file not found.")
 

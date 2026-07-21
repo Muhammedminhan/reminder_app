@@ -230,8 +230,10 @@ class ReminderDeliveryType(DjangoObjectType):
 class JiraIntegrationType(DjangoObjectType):
     class Meta:
         model = JiraIntegration
+        # api_token deliberately excluded — returning the decrypted token over
+        # GraphQL would expose Jira credentials to any authenticated user (CWE-200).
         fields = (
-            'id', 'company', 'base_url', 'email', 'api_token', 'project_key', 'is_active',
+            'id', 'company', 'base_url', 'email', 'project_key', 'is_active',
         )
 
 
@@ -757,18 +759,24 @@ class Query(graphene.ObjectType):
                     total_users_count=0
                 )
             
-        pending = reminders.filter(completed=False).count()
-        completed = reminders.filter(completed=True).count()
-        
-        from django.utils import timezone
-        from datetime import timedelta
+        from django.db.models import Count, Q as DQ
         now = timezone.now()
-        in_seven = reminders.filter(
-            reminder_start_date__gte=now,
-            reminder_start_date__lte=now + timedelta(days=7)
-        ).count()
-        
-        total_active = reminders.filter(active=True).count()
+        in_seven_end = now + timedelta(days=7)
+
+        # Single aggregate query replacing 4 separate COUNT queries
+        agg = reminders.aggregate(
+            pending=Count('id', filter=DQ(completed=False)),
+            completed=Count('id', filter=DQ(completed=True)),
+            in_seven=Count('id', filter=DQ(
+                reminder_start_date__gte=now,
+                reminder_start_date__lte=in_seven_end,
+            )),
+            total_active=Count('id', filter=DQ(active=True)),
+        )
+        pending = agg['pending']
+        completed = agg['completed']
+        in_seven = agg['in_seven']
+        total_active = agg['total_active']
         total_users = users.count()
         
         return DashboardStatsType(

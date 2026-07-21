@@ -23,6 +23,7 @@ from .views import (
     upload_attachment,
     google_auth_init,
     google_auth_callback,
+    google_token_exchange,
     serve_protected_media,
 )
 
@@ -64,6 +65,7 @@ urlpatterns = [
     # Google OAuth2
     path('google/login/', google_auth_init, name='google-auth-init'),
     path('google/callback/', google_auth_callback, name='google-auth-callback'),
+    path('google/token-exchange/', google_token_exchange, name='google-token-exchange'),
     # Media Serving (Protected)
     path('media/<path:path>/', serve_protected_media, name='serve-protected-media'),
 ]
