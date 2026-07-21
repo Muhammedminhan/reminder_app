@@ -333,11 +333,26 @@ if not DEBUG or config('FORCE_SECURE_COOKIES', default=False, cast=bool):
 
 # JWT settings
 from datetime import timedelta
+
+_JWT_SIGNING_KEY = config('JWT_SIGNING_KEY', default='')
+if not _JWT_SIGNING_KEY:
+    if _is_cloud_run:
+        from django.core.exceptions import ImproperlyConfigured
+        raise ImproperlyConfigured(
+            'JWT_SIGNING_KEY must be set to a strong random string in production. '
+            'Generate with: python -c "import secrets; print(secrets.token_urlsafe(50))"'
+        )
+    # Local dev fallback: derive from SECRET_KEY so no extra setup is needed.
+    import hashlib as _hashlib
+    _JWT_SIGNING_KEY = _hashlib.sha256(f'jwt-{SECRET_KEY}'.encode()).hexdigest()
+
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=30),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
+    'SIGNING_KEY': _JWT_SIGNING_KEY,
+    'ALGORITHM': 'HS256',
 }
 
 # REST Framework settings
