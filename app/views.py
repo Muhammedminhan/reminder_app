@@ -1,5 +1,6 @@
 import os
 import uuid
+import hashlib
 from django.shortcuts import redirect, reverse
 from django.http import JsonResponse, HttpResponse, HttpResponseForbidden, HttpResponseBadRequest, HttpResponseServerError
 from django.views.decorators.csrf import csrf_exempt
@@ -329,6 +330,10 @@ def robots_txt(request):
 
 # ---- MFA (Password + TOTP) minimal endpoints ----
 
+def _hash_token(token: str) -> str:
+    """SHA-256 hash a token before using it as a cache key (CWE-312)."""
+    return hashlib.sha256(token.encode()).hexdigest()
+
 def _has_totp_enabled(user):
     try:
         from django_otp import devices_for_user  # type: ignore
@@ -414,7 +419,7 @@ def login_password(request):
         if _has_totp_enabled(user):
             # Issue a short-lived challenge id
             challenge_id = secrets.token_urlsafe(16)
-            cache.set(f"mfa:challenge:{challenge_id}", {'user_id': user.id}, timeout=120)
+            cache.set(f"mfa:challenge:{_hash_token(challenge_id)}", {'user_id': user.id}, timeout=120)
             return JsonResponse({'ok': True, 'mfa_required': True, 'mfa_challenge_id': challenge_id})
         # No MFA required — issue JWT tokens directly
         from rest_framework_simplejwt.tokens import RefreshToken
@@ -465,16 +470,17 @@ def mfa_verify(request):
         if not totp_code.isdigit():
             return JsonResponse({'ok': False, 'message': 'totp_code must be numeric'}, status=400)
 
-        entry = cache.get(f"mfa:challenge:{challenge_id}")
+        challenge_id_hash = _hash_token(challenge_id)
+        entry = cache.get(f"mfa:challenge:{challenge_id_hash}")
         if not entry or not entry.get('user_id'):
             return JsonResponse({'ok': False, 'message': 'challenge expired or invalid'}, status=400)
 
         # Per-challenge attempt counter — invalidate after 5 failures regardless of IP.
         # Stored separately so it survives the entry TTL check above.
-        challenge_attempt_key = f"rl:mfa_verify:challenge:{challenge_id}"
+        challenge_attempt_key = f"rl:mfa_verify:challenge:{challenge_id_hash}"
         challenge_attempts = cache.get(challenge_attempt_key, 0)
         if challenge_attempts >= 5:
-            cache.delete(f"mfa:challenge:{challenge_id}")
+            cache.delete(f"mfa:challenge:{challenge_id_hash}")
             return JsonResponse({'ok': False, 'message': 'Too many attempts — challenge invalidated. Please log in again.'}, status=429)
         cache.set(challenge_attempt_key, challenge_attempts + 1, 300)
 
@@ -502,9 +508,9 @@ def mfa_verify(request):
         signer = TimestampSigner()
         raw = secrets.token_urlsafe(24)
         signed = signer.sign(f"{user.id}:{raw}")
-        cache.set(f"mfa:token:{raw}", {'user_id': user.id}, timeout=90)
+        cache.set(f"mfa:token:{_hash_token(raw)}", {'user_id': user.id}, timeout=90)
         # Invalidate the challenge and its attempt counter to prevent reuse
-        cache.delete(f"mfa:challenge:{challenge_id}")
+        cache.delete(f"mfa:challenge:{challenge_id_hash}")
         cache.delete(challenge_attempt_key)
         return JsonResponse({'ok': True, 'mfa_token': signed})
     except json.JSONDecodeError:
@@ -1099,7 +1105,6 @@ def forgot_password(request):
             
             # In DEBUG mode log only the token hash (never the full link)
             if getattr(settings, 'DEBUG', False):
-                import hashlib
                 _dbg_hash = hashlib.sha256(reset_link.encode()).hexdigest()[:16]
                 logger.info(f"PASSWORD RESET TOKEN HASH (DEBUG ONLY): {_dbg_hash}")
 
@@ -1157,7 +1162,6 @@ def reset_password(request):
         # ── One-time use: reject the token if it was already consumed ─────────
         # We store a SHA-256 hash of the raw token (not the token itself) so the
         # cache entry reveals nothing if the cache backend is ever inspected.
-        import hashlib
         token_hash = hashlib.sha256(token.encode()).hexdigest()
         used_key = f"pw_reset_used:{token_hash}"
 
