@@ -2144,6 +2144,9 @@ class UpdateMe(graphene.Mutation):
             
         email = kwargs.get('email')
         if email is not None:
+            from django.contrib.auth import get_user_model as _get_user_model
+            if _get_user_model().objects.filter(email__iexact=email).exclude(pk=user.pk).exists():
+                raise Exception('That email address is already in use')
             user.email = email
 
         user.save()

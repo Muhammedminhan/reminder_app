@@ -231,17 +231,11 @@ def signup(request):
         
         # Create user
         User = get_user_model()
-        if User.objects.filter(username=username).exists():
+        if User.objects.filter(username=username).exists() or User.objects.filter(email=email).exists():
             return JsonResponse({
                 'ok': False,
-                'code': 'USERNAME_TAKEN',
-                'message': 'Username already exists'
-            }, status=400)
-        if User.objects.filter(email=email).exists():
-            return JsonResponse({
-                'ok': False,
-                'code': 'EMAIL_TAKEN',
-                'message': 'Email already exists'
+                'code': 'REGISTRATION_FAILED',
+                'message': 'Registration failed. Please check your input and try again.'
             }, status=400)
         
         # Create a default company for the user
@@ -1216,6 +1210,13 @@ def reset_password(request):
         from oauth2_provider.models import AccessToken, RefreshToken
         AccessToken.objects.filter(user=user).delete()
         RefreshToken.objects.filter(user=user).delete()
+
+        try:
+            from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, BlacklistedToken
+            for token in OutstandingToken.objects.filter(user=user):
+                BlacklistedToken.objects.get_or_create(token=token)
+        except Exception:
+            pass
 
         logger.info(f"PASSWORD RESET SUCCESS: User={user.username}")
         return JsonResponse({'ok': True, 'message': 'Password has been reset successfully'})
