@@ -856,7 +856,10 @@ class Query(graphene.ObjectType):
         if not user or not (user.is_superuser or user.is_staff):
             return []
         from django.utils import timezone
-        tokens = AccessToken.objects.select_related('user').order_by('-expires')[:100]
+        if user.is_superuser:
+            tokens = AccessToken.objects.select_related('user').order_by('-expires')[:100]
+        else:
+            tokens = AccessToken.objects.filter(user__company=user.company).select_related('user').order_by('-expires')[:100]
         result = []
         for tok in tokens:
             raw = tok.token or ''
@@ -1260,7 +1263,10 @@ class DeleteSendGridDomainAuth(graphene.Mutation):
         user = get_authenticated_user(info)
         if not user:
             raise Exception('Authentication required')
-        
+        if not user.is_superuser:
+            is_admin = user.groups.filter(name__iexact='Company Admin').exists()
+            if not is_admin:
+                raise Exception('Only company admins can delete SendGrid domain authentication')
         qs = SendGridDomainAuth.objects.all()
         if not user.is_superuser:
             qs = qs.filter(user__company_id=user.company_id)
