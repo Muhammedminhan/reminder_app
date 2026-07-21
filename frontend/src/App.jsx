@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ApolloProvider } from '@apollo/client';
 import { client } from './lib/apollo';
@@ -7,8 +7,17 @@ import LoginPage from './pages/Login';
 import DashboardPage from './pages/Dashboard';
 import ResetPasswordPage from './pages/ResetPassword';
 
+// Evaluated on mount so token expiry is caught when the user navigates back
+// to a protected route, not just at the start of the session.
 function PrivateRoute({ children }) {
-  return isAuthenticated() ? children : <Navigate to="/login" />;
+  const [authed, setAuthed] = useState(null);
+
+  useEffect(() => {
+    setAuthed(isAuthenticated());
+  }, []);
+
+  if (authed === null) return null; // avoid flash before check completes
+  return authed ? children : <Navigate to="/login" replace />;
 }
 
 export default function App() {
@@ -26,6 +35,8 @@ export default function App() {
               </PrivateRoute>
             }
           />
+          {/* Redirect any unknown route — prevents unguarded pages from rendering */}
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Router>
     </ApolloProvider>
