@@ -835,7 +835,10 @@ class Query(graphene.ObjectType):
             return []
         limit = max(1, min(int(limit or 50), 1000))
         from auditlog.models import LogEntry
-        logs = LogEntry.objects.select_related('actor', 'content_type').order_by('-timestamp')[:limit]
+        if user.is_superuser:
+            logs = LogEntry.objects.select_related('actor', 'content_type').order_by('-timestamp')[:limit]
+        else:
+            logs = LogEntry.objects.filter(actor__company=user.company).select_related('actor', 'content_type').order_by('-timestamp')[:limit]
         result = []
         for log in logs:
             result.append(AuditLogType(
@@ -1000,7 +1003,7 @@ class CreateReminder(graphene.Mutation):
             
             if 'slack_user_id' in kwargs and kwargs['slack_user_id']:
                 user_ids = [uid.strip() for uid in kwargs['slack_user_id'].split(',') if uid.strip()]
-                users_to_add = get_user_model().objects.filter(id__in=user_ids)
+                users_to_add = get_user_model().objects.filter(id__in=user_ids, company=user.company)
                 reminder.slack_users.set(users_to_add)
             elif 'slack_user_id' in kwargs:
                 reminder.slack_users.clear()
@@ -1074,7 +1077,7 @@ class UpdateReminder(graphene.Mutation):
         if 'slack_user_id' in kwargs:
             if kwargs['slack_user_id']:
                 user_ids = [uid.strip() for uid in kwargs['slack_user_id'].split(',') if uid.strip()]
-                users_to_add = get_user_model().objects.filter(id__in=user_ids)
+                users_to_add = get_user_model().objects.filter(id__in=user_ids, company=user.company)
                 reminder.slack_users.set(users_to_add)
             else:
                 reminder.slack_users.clear()

@@ -905,6 +905,9 @@ def sso_acs(request, company_id):
         # Use python3-saml's own get_last_response_in_xml to extract the actual issuer
         # from the parsed assertion, not from our local config (which would always match).
         configured_entity_id = getattr(sso_settings, 'entity_id', '') or ''
+        if not configured_entity_id:
+            logger.error(f"SAML ACS: entity_id not configured for company {company_id}")
+            return HttpResponseForbidden("SSO misconfigured — contact your administrator.")
         if configured_entity_id:
             try:
                 import xml.etree.ElementTree as _ET
@@ -945,7 +948,10 @@ def sso_acs(request, company_id):
         # company.domain is the verified domain (e.g. "acme.com").
         email_domain = email.split('@')[1].lower()
         company_domain = getattr(company, 'domain', '') or ''
-        if company_domain and email_domain != company_domain.lower():
+        if not company_domain:
+            logger.error(f"SAML ACS: domain not configured for company {company_id}")
+            return HttpResponseForbidden("SSO misconfigured — contact your administrator.")
+        if email_domain != company_domain.lower():
             logger.warning(
                 f"SAML JIT blocked: email domain '{email_domain}' not authorised for company {company_id} (domain: {company_domain})"
             )
