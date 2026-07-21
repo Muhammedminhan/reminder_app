@@ -441,14 +441,16 @@ def mfa_verify(request):
 
     OWASP: Rate limited per IP (10 attempts/min) to prevent brute-force of TOTP codes.
     """
-    # --- Rate Limiting ---
+    # --- Rate Limiting (CWE-307) ---
+    # Two independent limits: per-IP (stops distributed guessing) and
+    # per-challenge (stops IP-rotating attackers targeting a single challenge).
     if getattr(settings, 'RATE_LIMIT_ENABLED', True):
         ip = request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR', 'unknown')).split(',')[0].strip()
-        rl_key = f"rl:mfa_verify:{ip}"
-        attempts = cache.get(rl_key, 0)
-        if attempts >= 10:
+        ip_key = f"rl:mfa_verify:ip:{ip}"
+        ip_attempts = cache.get(ip_key, 0)
+        if ip_attempts >= 10:
             return JsonResponse({'ok': False, 'message': 'Too many attempts, please try again later.'}, status=429)
-        cache.set(rl_key, attempts + 1, 60)
+        cache.set(ip_key, ip_attempts + 1, 60)
 
     try:
         data = json.loads(request.body or "{}")
@@ -466,6 +468,16 @@ def mfa_verify(request):
         entry = cache.get(f"mfa:challenge:{challenge_id}")
         if not entry or not entry.get('user_id'):
             return JsonResponse({'ok': False, 'message': 'challenge expired or invalid'}, status=400)
+
+        # Per-challenge attempt counter — invalidate after 5 failures regardless of IP.
+        # Stored separately so it survives the entry TTL check above.
+        challenge_attempt_key = f"rl:mfa_verify:challenge:{challenge_id}"
+        challenge_attempts = cache.get(challenge_attempt_key, 0)
+        if challenge_attempts >= 5:
+            cache.delete(f"mfa:challenge:{challenge_id}")
+            return JsonResponse({'ok': False, 'message': 'Too many attempts — challenge invalidated. Please log in again.'}, status=429)
+        cache.set(challenge_attempt_key, challenge_attempts + 1, 300)
+
         user_id = entry['user_id']
         User = get_user_model()
         user = User.objects.filter(pk=user_id).first()
@@ -486,13 +498,14 @@ def mfa_verify(request):
                 return JsonResponse({'ok': False, 'message': 'invalid code'}, status=401)
         except Exception:
             return JsonResponse({'ok': False, 'message': 'TOTP not available on server'}, status=400)
-        # Success: issue short-lived mfa_token
+        # Success: issue short-lived mfa_token and clean up rate-limit counters
         signer = TimestampSigner()
         raw = secrets.token_urlsafe(24)
         signed = signer.sign(f"{user.id}:{raw}")
         cache.set(f"mfa:token:{raw}", {'user_id': user.id}, timeout=90)
-        # Invalidate the challenge to prevent reuse
+        # Invalidate the challenge and its attempt counter to prevent reuse
         cache.delete(f"mfa:challenge:{challenge_id}")
+        cache.delete(challenge_attempt_key)
         return JsonResponse({'ok': True, 'mfa_token': signed})
     except json.JSONDecodeError:
         return JsonResponse({'ok': False, 'message': 'invalid json'}, status=400)
