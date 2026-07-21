@@ -332,10 +332,11 @@ SECURE_SSL_REDIRECT = config('SECURE_SSL_REDIRECT', default=not DEBUG, cast=bool
 SESSION_COOKIE_SAMESITE = 'Strict'
 CSRF_COOKIE_SAMESITE = 'Strict'
 
+SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
+
 if not DEBUG or config('FORCE_SECURE_COOKIES', default=False, cast=bool):
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
-    SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
 
 # JWT settings
 from datetime import timedelta

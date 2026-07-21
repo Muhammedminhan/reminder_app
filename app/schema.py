@@ -815,7 +815,7 @@ class Query(graphene.ObjectType):
 
     def resolve_oauth_applications(self, info):
         user = get_authenticated_user(info)
-        if not user or not (user.is_superuser or user.is_staff):
+        if not user or not user.is_superuser:
             return []
         apps = OAuthApplication.objects.all().order_by('name')
         return [
@@ -2194,11 +2194,17 @@ class CreateComment(graphene.Mutation):
         if len(text) > 5000:
             raise Exception('Comment text exceeds maximum length (5000 characters)')
 
+        parent = None
+        if parent_id is not None:
+            parent = Comment.objects.filter(pk=parent_id, reminder=reminder).first()
+            if not parent:
+                raise Exception('Parent comment not found or does not belong to this reminder')
+
         comment = Comment(
             reminder=reminder,
             user=user,
             text=text,
-            parent_id=parent_id
+            parent=parent,
         )
         comment.save()
         
