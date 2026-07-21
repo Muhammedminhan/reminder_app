@@ -1048,12 +1048,29 @@ class UpdateReminder(graphene.Mutation):
         reminder = qs.filter(pk=id).first()
         if not reminder:
             raise Exception('Reminder not found')
+        # Explicit allowlist — never blindly setattr all kwargs (prevents setting
+        # company, approved_by, is_approved, etc. via crafted input).
+        ALLOWED_FIELDS = {
+            'title', 'description', 'sender_email', 'sender_name',
+            'receiver_email', 'interval_type', 'reminder_start_date',
+            'reminder_end_date', 'phone_no', 'send', 'completed',
+            'slack_channels',
+        }
+        import re as _re
         for key, value in kwargs.items():
-            if key == 'visible_to_groups':
-                groups = Group.objects.filter(id__in=value, company=user.company)
-                reminder.visible_to_groups.set(groups)
-            else:
-                setattr(reminder, key, value)
+            if key not in ALLOWED_FIELDS:
+                continue
+            if key == 'title' and value and len(value) > 255:
+                raise Exception('Title exceeds 255 characters')
+            if key == 'description' and value and len(value) > 5000:
+                raise Exception('Description exceeds 5000 characters')
+            if key == 'sender_email' and value:
+                if not _re.match(r'^[^@\s]+@[^@\s]+\.[^@\s]+$', value):
+                    raise Exception('Invalid sender email')
+            if key == 'receiver_email' and value:
+                if not _re.match(r'^[^@\s]+@[^@\s]+\.[^@\s]+$', value):
+                    raise Exception('Invalid receiver email')
+            setattr(reminder, key, value)
         reminder.save()
         
         if 'slack_user_id' in kwargs:
@@ -1530,9 +1547,10 @@ class AssignRoleToUser(graphene.Mutation):
                 if not user_has_permission(requester, 'users.manage_roles'):
                     raise Exception('Not authorized to assign roles')
         
-        # Get user and role
+        # Get user — non-superusers may only assign roles within their own company
         UserModel = get_user_model()
-        user = UserModel.objects.filter(pk=user_id).first()
+        user_qs = UserModel.objects.all() if requester.is_superuser else UserModel.objects.filter(company=requester.company)
+        user = user_qs.filter(pk=user_id).first()
         if not user:
             raise Exception('User not found')
         
@@ -1874,10 +1892,7 @@ class CreateGroup(graphene.Mutation):
                 created_by=user
             )
             if member_ids:
-                from django.contrib.auth import get_user_model
-                members = get_user_model().objects.filter(id__in=member_ids)
-                group.members.set(members)
-            
+                members = get_user_model().objects.filter(id__in=member_ids, company=user.company)
                 group.members.set(members)
                 
             return CreateGroup(ok=True, group=group)
@@ -1952,7 +1967,11 @@ class UpdateJiraIntegration(graphene.Mutation):
         user = get_authenticated_user(info)
         if not user:
             raise Exception('Authentication required')
-        
+
+        is_company_admin = user.groups.filter(name__iexact='Company Admin').exists()
+        if not user.is_superuser and not is_company_admin:
+            raise Exception('Only company admins can update Jira integration settings')
+
         integration, created = JiraIntegration.objects.get_or_create(
             company=user.company,
             defaults=kwargs
@@ -2125,10 +2144,11 @@ class ApproveReminder(graphene.Mutation):
         if not user:
             raise Exception('Authentication required')
             
-        reminder = Reminder.objects.filter(pk=id).first()
+        qs = Reminder.objects.all() if user.is_superuser else Reminder.objects.filter(company=user.company)
+        reminder = qs.filter(pk=id).first()
         if not reminder:
             raise Exception('Reminder not found')
-            
+
         # Check permissions
         can_approve = user_has_permission(user, 'reminders.approve')
         
@@ -2162,10 +2182,14 @@ class CreateComment(graphene.Mutation):
         if not user:
             raise Exception('Authentication required')
             
-        reminder = Reminder.objects.filter(pk=reminder_id).first()
+        qs = Reminder.objects.all() if user.is_superuser else Reminder.objects.filter(company=user.company)
+        reminder = qs.filter(pk=reminder_id).first()
         if not reminder:
             raise Exception('Reminder not found')
-            
+
+        if len(text) > 5000:
+            raise Exception('Comment text exceeds maximum length (5000 characters)')
+
         comment = Comment(
             reminder=reminder,
             user=user,

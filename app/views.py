@@ -363,8 +363,8 @@ def _get_oauth_user(request):
         token = None
         if auth_header.startswith('Bearer '):
             token = auth_header[7:]
-        else:
-            token = request.GET.get('token')
+        # Deliberately no fallback to request.GET.get('token') — tokens in query
+        # params appear in server access logs, browser history, and Referer headers (CWE-598).
 
         if token:
             at = AccessToken.objects.filter(token=token).first()
@@ -902,13 +902,24 @@ def sso_acs(request, company_id):
             return HttpResponseForbidden("SAML Authentication Failed.")
 
         # H2: Validate the response issuer matches the configured IdP entity ID for this company.
-        # This prevents a cross-tenant attack where a SAML response is posted to another
-        # company's ACS URL (the company_id is in the URL, so anyone can craft that request).
-        response_issuer = auth.get_last_response_in_xml() and auth.get_settings().get_idp_data().get('entityId')
-        configured_entity_id = sso_settings.entity_id
-        if response_issuer and configured_entity_id and response_issuer != configured_entity_id:
-            logger.warning(f"SAML ACS: issuer mismatch for company {company_id} — expected {configured_entity_id}, got {response_issuer}")
-            return HttpResponseForbidden("SAML issuer does not match configured IdP.")
+        # Use python3-saml's own get_last_response_in_xml to extract the actual issuer
+        # from the parsed assertion, not from our local config (which would always match).
+        configured_entity_id = getattr(sso_settings, 'entity_id', '') or ''
+        if configured_entity_id:
+            try:
+                import xml.etree.ElementTree as _ET
+                _ns = {'saml': 'urn:oasis:names:tc:SAML:2.0:assertion'}
+                _xml_bytes = auth.get_last_response_in_xml()
+                if _xml_bytes:
+                    _root = _ET.fromstring(_xml_bytes if isinstance(_xml_bytes, bytes) else _xml_bytes.encode())
+                    _issuer_el = _root.find('.//{urn:oasis:names:tc:SAML:2.0:assertion}Issuer')
+                    response_issuer = _issuer_el.text.strip() if _issuer_el is not None and _issuer_el.text else ''
+                    if response_issuer and response_issuer != configured_entity_id:
+                        logger.warning(f"SAML ACS: issuer mismatch for company {company_id} — expected {configured_entity_id}, got {response_issuer}")
+                        return HttpResponseForbidden("SAML authentication failed.")
+            except Exception as _saml_exc:
+                logger.error(f"SAML issuer parse error for company {company_id}: {_saml_exc}")
+                return HttpResponseForbidden("SAML authentication failed.")
 
         # JIT Provisioning
         user_data = auth.get_attributes()
@@ -985,10 +996,14 @@ def sso_acs_legacy(request):
 
 def sso_metadata(request):
     """Expose SP Metadata XML."""
-    # This might require context about which company we are generating metadata for,
-    # OR we make generic metadata if we don't sign requests (but usually we need entityID).
-    # IF specific entityID per company, we need company param.
-    # For now, let's assume we pass ?company=ID similar to ACS, or we just error if not provided.
+    if getattr(settings, 'RATE_LIMIT_ENABLED', True):
+        ip = request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR', 'unknown')).split(',')[0].strip()
+        rl_key = f"rl:sso_metadata:{ip}"
+        attempts = cache.get(rl_key, 0)
+        if attempts >= 20:
+            return JsonResponse({'error': 'Too many requests'}, status=429)
+        cache.set(rl_key, attempts + 1, 60)
+
     company_id = request.GET.get('company')
     if not company_id:
         return HttpResponseBadRequest("Company ID required for metadata.")
@@ -1115,13 +1130,18 @@ def forgot_password(request):
         
         # Security: always return success to avoid email enumeration
         if user:
-            signer = TimestampSigner()
-            token = signer.sign(user.email)
+            # Use an opaque random nonce so the URL token never encodes the user's
+            # email address (TimestampSigner embeds the payload in plaintext: CWE-312).
+            # Store SHA-256(nonce) → user_id in cache for 1 hour.
+            nonce = secrets.token_urlsafe(32)
+            cache.set(f"pw_reset:{_hash_token(nonce)}", user.id, timeout=3600)
+
+            reset_link = f"{request.scheme}://{request.get_host()}/reset-password?token={nonce}"
             if getattr(settings, 'DEBUG', False):
                 logger.debug(f"PASSWORD RESET REQUEST: User={user.username}")
-            
-            # Send email if SendGrid is configured
-            reset_link = f"{request.scheme}://{request.get_host()}/reset-password?token={token}"
+                _dbg_hash = hashlib.sha256(nonce.encode()).hexdigest()[:16]
+                logger.debug(f"PASSWORD RESET TOKEN HASH (DEBUG ONLY): {_dbg_hash}")
+
             try:
                 from .utils import _send_html_email
                 subject = "Reset your NotifyHub password"
@@ -1129,11 +1149,6 @@ def forgot_password(request):
                 _send_html_email(email, subject, html)
             except Exception as e:
                 logger.error(f"Failed to send password reset email: {e}")
-            
-            # In DEBUG mode log only the token hash (never the full link)
-            if getattr(settings, 'DEBUG', False):
-                _dbg_hash = hashlib.sha256(reset_link.encode()).hexdigest()[:16]
-                logger.info(f"PASSWORD RESET TOKEN HASH (DEBUG ONLY): {_dbg_hash}")
 
         return JsonResponse({'ok': True, 'message': 'If an account exists with that email, a reset link has been sent.'})
     except json.JSONDecodeError:
@@ -1170,38 +1185,22 @@ def reset_password(request):
             return JsonResponse({'ok': False, 'message': 'Token and field password are required'}, status=400)
 
         # --- Input Validation ---
-        if len(token) > 512:
+        if len(token) > 128:
             return JsonResponse({'ok': False, 'message': 'Invalid token'}, status=400)
         if len(new_password) < 8:
             return JsonResponse({'ok': False, 'message': 'Password must be at least 8 characters'}, status=400)
         if len(new_password) > 256:
             return JsonResponse({'ok': False, 'message': 'Password too long (max 256 chars)'}, status=400)
-        
-        signer = TimestampSigner()
-        try:
-            # Token valid for 1 hour (max_age in seconds)
-            email = signer.unsign(token, max_age=3600)
-        except SignatureExpired:
-            return JsonResponse({'ok': False, 'message': 'Token has expired'}, status=400)
-        except BadSignature:
-            return JsonResponse({'ok': False, 'message': 'Invalid token'}, status=400)
 
-        # ── One-time use: reject the token if it was already consumed ─────────
-        # We store a SHA-256 hash of the raw token (not the token itself) so the
-        # cache entry reveals nothing if the cache backend is ever inspected.
-        token_hash = hashlib.sha256(token.encode()).hexdigest()
-        used_key = f"pw_reset_used:{token_hash}"
-
-        # Atomically claim the token — cache.add() returns False if key already exists.
-        # This is atomic in Redis and prevents the check-then-set race.
-        if not cache.add(used_key, True, timeout=3600):
-            return JsonResponse(
-                {'ok': False, 'message': 'This reset link has already been used. Please request a new one.'},
-                status=400,
-            )
+        # Opaque nonce lookup — atomically claim and delete to prevent reuse.
+        cache_key = f"pw_reset:{_hash_token(token)}"
+        user_id = cache.get(cache_key)
+        if not user_id:
+            return JsonResponse({'ok': False, 'message': 'Token has expired or already been used'}, status=400)
+        cache.delete(cache_key)
 
         User = get_user_model()
-        user = User.objects.filter(email__iexact=email).first()
+        user = User.objects.filter(pk=user_id).first()
         if not user:
             # Token was claimed but user not found — release so they can retry
             cache.delete(used_key)

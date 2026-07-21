@@ -325,6 +325,9 @@ SECURE_HSTS_PRELOAD = True
 # Production SSL and Cookies (secure defaults)
 SECURE_SSL_REDIRECT = config('SECURE_SSL_REDIRECT', default=not DEBUG, cast=bool)
 # Ensure cookies are secure in prod or if explicitly requested
+SESSION_COOKIE_SAMESITE = 'Strict'
+CSRF_COOKIE_SAMESITE = 'Strict'
+
 if not DEBUG or config('FORCE_SECURE_COOKIES', default=False, cast=bool):
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
