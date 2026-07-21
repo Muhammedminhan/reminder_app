@@ -432,6 +432,13 @@ export default function Dashboard() {
     const [showCreateDept, setShowCreateDept] = useState(false);
     const [showCreateRole, setShowCreateRole] = useState(false);
     const [newUserForm, setNewUserForm] = useState({ username:'', email:'', password:'', firstName:'', lastName:'', isStaff:false, isSuperuser:false });
+
+    const generatePassword = () => {
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()_+';
+        const values = crypto.getRandomValues(new Uint32Array(16));
+        const pwd = Array.from(values, v => chars[v % chars.length]).join('');
+        setNewUserForm(f => ({ ...f, password: pwd }));
+    };
     const [newDeptName, setNewDeptName] = useState('');
     const [newRoleForm, setNewRoleForm] = useState({ name:'', description:'' });
     // adminData query and admin mutations — declared here but skip logic uses isAdmin state set after INITIAL_QUERY
@@ -1487,7 +1494,14 @@ export default function Dashboard() {
                                                         {[['username','Username','e.g. john_doe'],['email','Email','john@company.com'],['password','Password','Min 8 characters'],['firstName','First Name','John'],['lastName','Last Name','Doe']].map(([k,label,ph]) => (
                                                             <div key={k}>
                                                                 <div style={{ fontSize:'11.5px', fontWeight:'700', color:'var(--text-dim)', marginBottom:'5px', textTransform:'uppercase', letterSpacing:'0.06em' }}>{label}</div>
-                                                                <input type={k==='password'?'password':'text'} placeholder={ph} value={newUserForm[k]||''} onChange={e=>setNewUserForm(f=>({...f,[k]:e.target.value}))} style={inputStyle} />
+                                                                {k === 'password' ? (
+                                                                    <div style={{ display:'flex', gap:'6px' }}>
+                                                                        <input type="password" placeholder={ph} value={newUserForm.password||''} onChange={e=>setNewUserForm(f=>({...f,password:e.target.value}))} style={{...inputStyle, flex:1}} />
+                                                                        <button type="button" onClick={generatePassword} style={{ padding:'0 10px', fontSize:'11px', background:'rgba(0,171,228,0.15)', color:'#00ABE4', border:'1px solid rgba(0,171,228,0.3)', borderRadius:'6px', cursor:'pointer', whiteSpace:'nowrap' }}>Generate</button>
+                                                                    </div>
+                                                                ) : (
+                                                                    <input type="text" placeholder={ph} value={newUserForm[k]||''} onChange={e=>setNewUserForm(f=>({...f,[k]:e.target.value}))} style={inputStyle} />
+                                                                )}
                                                             </div>
                                                         ))}
                                                         <div>
