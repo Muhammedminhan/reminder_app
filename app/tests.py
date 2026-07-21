@@ -390,3 +390,49 @@ class ReminderAdminNotificationTests(TestCase):
         for offset in range(8):
             date = self.today + timedelta(days=offset)
             self.assertIn(str(date), message)
+
+
+class AESGCMEncryptionTests(TestCase):
+    """CWE-327: verify AES-256-GCM is used and CBC-style bypass is rejected."""
+
+    def setUp(self):
+        from django.test.utils import override_settings
+        # Provide a valid Fernet-format key for tests
+        import base64, hashlib
+        raw = base64.urlsafe_b64encode(hashlib.sha256(b'test-secret').digest()).decode()
+        self._override = override_settings(FIELD_ENCRYPTION_KEY=raw)
+        self._override.enable()
+
+    def tearDown(self):
+        self._override.disable()
+
+    def test_roundtrip(self):
+        from app.encryption import encrypt, decrypt
+        plaintext = 'super-secret-api-token'
+        token = encrypt(plaintext)
+        self.assertEqual(decrypt(token), plaintext)
+
+    def test_ciphertext_has_three_parts(self):
+        from app.encryption import encrypt
+        token = encrypt('value')
+        self.assertEqual(len(token.split(':')), 3, 'Expected iv:tag:ciphertext format')
+
+    def test_tampered_ciphertext_rejected(self):
+        from app.encryption import encrypt, decrypt
+        token = encrypt('value')
+        parts = token.split(':')
+        parts[2] = 'deadbeef' * 4  # corrupt ciphertext
+        with self.assertRaises(ValueError):
+            decrypt(':'.join(parts))
+
+    def test_cbc_style_two_part_token_rejected(self):
+        """Two-part iv:ciphertext (CBC style) must be explicitly rejected."""
+        from app.encryption import decrypt
+        fake_cbc = 'aabbccdd' * 4 + ':' + 'eeff0011' * 8
+        with self.assertRaises(ValueError, msg='CBC-style token should be rejected'):
+            decrypt(fake_cbc)
+
+    def test_unique_ciphertexts(self):
+        """Each call must produce a different ciphertext (random IV)."""
+        from app.encryption import encrypt
+        self.assertNotEqual(encrypt('same'), encrypt('same'))
