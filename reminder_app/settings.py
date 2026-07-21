@@ -28,15 +28,19 @@ BASE_DIR = Path(__file__).resolve().parent.parent
  
 # SECURITY WARNING: keep the secret key used in production secret!
 # No default — fail fast in production. For local dev, set SECRET_KEY in .env.
-SECRET_KEY = config('SECRET_KEY', default='change-me-please')
+try:
+    SECRET_KEY = config('SECRET_KEY')
+except Exception:
+    SECRET_KEY = ''
 _is_cloud_run = bool(os.environ.get('K_SERVICE'))
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config('DEBUG', default=False, cast=bool)
-if (not DEBUG or _is_cloud_run) and (not SECRET_KEY or SECRET_KEY == 'change-me-please'):
+if not SECRET_KEY:
     from django.core.exceptions import ImproperlyConfigured
     raise ImproperlyConfigured(
-        'SECRET_KEY must be set to a strong random string in production. '
-        'Generate with: python -c "import secrets; print(secrets.token_urlsafe(50))"'
+        'SECRET_KEY must be set in all environments — including local dev. '
+        'Generate with: python -c "import secrets; print(secrets.token_urlsafe(50))" '
+        'and add it to your .env file.'
     )
 if DEBUG and _is_cloud_run:
     from django.core.exceptions import ImproperlyConfigured

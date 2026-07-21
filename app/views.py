@@ -367,8 +367,8 @@ def _get_oauth_user(request):
         # params appear in server access logs, browser history, and Referer headers (CWE-598).
 
         if token:
-            at = AccessToken.objects.filter(token=token).first()
-            if at:
+            at = AccessToken.objects.filter(token=token).select_related('user').first()
+            if at and not at.is_expired():
                 return at.user
     except Exception:
         pass
@@ -1202,8 +1202,6 @@ def reset_password(request):
         User = get_user_model()
         user = User.objects.filter(pk=user_id).first()
         if not user:
-            # Token was claimed but user not found — release so they can retry
-            cache.delete(used_key)
             return JsonResponse({'ok': False, 'message': 'User not found'}, status=404)
 
         user.set_password(new_password)
@@ -1385,6 +1383,10 @@ def google_auth_callback(request):
         }, timeout=10)
         user_info = user_info_resp.json()
         
+        if not user_info.get('email_verified'):
+            logger.warning("Google OAuth: email_verified is false — rejecting login")
+            return JsonResponse({'ok': False, 'message': 'Google account email is not verified. Please verify your email with Google first.'}, status=400)
+
         email = user_info.get('email')
         first_name = user_info.get('given_name', '')
         last_name = user_info.get('family_name', '')

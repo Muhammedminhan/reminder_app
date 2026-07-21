@@ -594,11 +594,9 @@ class Query(graphene.ObjectType):
             if company:
                 qs = qs.filter(company_id=company)
         else:
-            # Regular users can only see roles for their company or system roles
-            if company:
-                qs = qs.filter(Q(company_id=company) | Q(company__isnull=True))
-            else:
-                qs = qs.filter(Q(company_id=user.company_id) | Q(company__isnull=True))
+            # Non-superusers are always scoped to their own company — ignore any
+            # caller-supplied company argument to prevent cross-tenant data leakage.
+            qs = qs.filter(Q(company_id=user.company_id) | Q(company__isnull=True))
         
         return qs.all()
     
@@ -1231,7 +1229,10 @@ class UpdateSendGridDomainAuth(graphene.Mutation):
         user = get_authenticated_user(info)
         if not user:
             raise Exception('Authentication required')
-        
+        if not user.is_superuser:
+            is_admin = user.groups.filter(name__iexact='Company Admin').exists()
+            if not is_admin:
+                raise Exception('Only company admins can update SendGrid domain authentication')
         qs = SendGridDomainAuth.objects.all()
         if not user.is_superuser:
             qs = qs.filter(user__company_id=user.company_id)
@@ -1878,13 +1879,7 @@ class CreateGroup(graphene.Mutation):
             member_ids = kwargs.get('memberIds') or kwargs.get('member_ids')
 
             if not user.company:
-                # Assign default company if missing for the user
-                from .models import Company
-                default_company = Company.objects.first()
-                if not default_company:
-                    raise Exception('No company found in database. Please contact admin.')
-                user.company = default_company
-                user.save()
+                raise Exception('Your account is not assigned to a company. Contact an administrator.')
 
             group = Group.objects.create(
                 name=name,
