@@ -238,11 +238,11 @@ def signup(request):
                 'message': 'Registration failed. Please check your input and try again.'
             }, status=400)
         
-        # Create a default company for the user
+        # Create a fresh company for each new signup — never reuse an existing one
         from .models import Company
-        company, created = Company.objects.get_or_create(
+        company = Company.objects.create(
             name=f"{username}'s Company",
-            defaults={'email': email}
+            email=email,
         )
         
         user = User.objects.create_user(

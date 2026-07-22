@@ -1499,6 +1499,10 @@ class UpdateRole(graphene.Mutation):
             raise Exception('Role not found')
         
         # Check permissions
+        if not user.is_superuser:
+            is_admin = user.groups.filter(name__iexact='Company Admin').exists()
+            if not is_admin:
+                raise Exception('Only company admins can modify roles')
         if role.is_system_role and not user.is_superuser:
             raise Exception('System roles can only be modified by superusers')
         if role.company and role.company_id != user.company_id and not user.is_superuser:
@@ -1537,6 +1541,10 @@ class DeleteRole(graphene.Mutation):
             raise Exception('Role not found')
         
         # Check permissions
+        if not user.is_superuser:
+            is_admin = user.groups.filter(name__iexact='Company Admin').exists()
+            if not is_admin:
+                raise Exception('Only company admins can delete roles')
         if role.is_system_role and not user.is_superuser:
             raise Exception('System roles can only be deleted by superusers')
         if role.company and role.company_id != user.company_id and not user.is_superuser:

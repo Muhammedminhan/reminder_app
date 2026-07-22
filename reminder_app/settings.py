@@ -81,6 +81,8 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'csp',
+    'django_permissions_policy',
     'corsheaders',
     'graphene_django',
     'rest_framework',
@@ -103,6 +105,8 @@ OTP_TOTP_TOLERANCE = 1  # Allow 30s drift
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware', # For serving static files in production
+    'csp.middleware.CSPMiddleware',
+    'django_permissions_policy.PermissionsPolicyMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'app.middleware.SessionUUIDFixerMiddleware',
@@ -514,3 +518,27 @@ DEFAULT_FROM_EMAIL = os.environ.get(
     'DEFAULT_FROM_EMAIL',
     os.environ.get('DEFAULT_SENDER_EMAIL', 'notifications@notifyhub.app'),
 )
+# ── Content-Security-Policy (django-csp >= 4.0 format) ───────────────────────
+_VITE_API_BASE = os.environ.get('VITE_API_BASE', '')
+CONTENT_SECURITY_POLICY = {
+    'DIRECTIVES': {
+        'default-src': ("'self'",),
+        'script-src': ("'self'",),
+        'style-src': ("'self'", "'unsafe-inline'"),
+        'img-src': ("'self'", "data:", "blob:"),
+        'font-src': ("'self'", "data:"),
+        'connect-src': ("'self'",) + ((_VITE_API_BASE,) if _VITE_API_BASE else ()),
+        'frame-ancestors': ("'none'",),
+        'object-src': ("'none'",),
+        'base-uri': ("'self'",),
+    }
+}
+
+# ── Permissions-Policy ────────────────────────────────────────────────────────
+PERMISSIONS_POLICY = {
+    'geolocation': [],
+    'microphone': [],
+    'camera': [],
+    'payment': [],
+    'usb': [],
+}

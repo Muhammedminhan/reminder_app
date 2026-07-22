@@ -3,6 +3,8 @@ Django==4.2.14
 asgiref==3.8.1
 gunicorn==21.2.0
 whitenoise==6.9.0
+django-csp>=3.8
+django-permissions-policy>=4.18
 
 # ── Database ──────────────────────────────────────────────────────────────────
 psycopg2-binary==2.9.9
