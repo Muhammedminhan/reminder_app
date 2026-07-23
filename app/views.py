@@ -64,7 +64,7 @@ def _check_webhook_auth(request):
     if not expected or token != expected:
         return False, JsonResponse({"status": "error", "message": "Unauthorized"}, status=401)
     # Rate limit per source IP — same pattern as login throttle
-    ip = request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR', 'unknown')).split(',')[0].strip()
+    ip = request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR', 'unknown')).split(',')[-1].strip()
     rl_key = f"rl:webhook:{ip}"
     attempts = cache.get(rl_key, 0)
     if attempts >= 10:
@@ -168,7 +168,7 @@ def signup(request):
         if getattr(settings, 'RATE_LIMIT_ENABLED', True):
             try:
                 # Use X-Forwarded-For for proxy-aware IP detection
-                ip = request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR', 'unknown')).split(',')[0].strip()
+                ip = request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR', 'unknown')).split(',')[-1].strip()
                 key = f"rl:signup:{ip}"
                 attempts = cache.get(key, 0)
                 if attempts >= getattr(settings, 'RATE_LIMIT_SIGNUP_PER_MINUTE', 3):
@@ -388,7 +388,7 @@ def login_password(request):
     """
     # --- Rate Limiting ---
     if getattr(settings, 'RATE_LIMIT_ENABLED', True):
-        ip = request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR', 'unknown')).split(',')[0].strip()
+        ip = request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR', 'unknown')).split(',')[-1].strip()
         rl_key = f"rl:login:{ip}"
         attempts = cache.get(rl_key, 0)
         limit = getattr(settings, 'RATE_LIMIT_LOGIN_PER_MINUTE', 5)
@@ -446,7 +446,7 @@ def mfa_verify(request):
     # Two independent limits: per-IP (stops distributed guessing) and
     # per-challenge (stops IP-rotating attackers targeting a single challenge).
     if getattr(settings, 'RATE_LIMIT_ENABLED', True):
-        ip = request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR', 'unknown')).split(',')[0].strip()
+        ip = request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR', 'unknown')).split(',')[-1].strip()
         ip_key = f"rl:mfa_verify:ip:{ip}"
         ip_attempts = cache.get(ip_key, 0)
         if ip_attempts >= 10:
@@ -581,7 +581,7 @@ def mfa_confirm(request):
     during the enrollment confirmation window (CWE-307).
     """
     if getattr(settings, 'RATE_LIMIT_ENABLED', True):
-        ip = request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR', 'unknown')).split(',')[0].strip()
+        ip = request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR', 'unknown')).split(',')[-1].strip()
         ip_key = f"rl:mfa_confirm:ip:{ip}"
         ip_attempts = cache.get(ip_key, 0)
         if ip_attempts >= 10:
@@ -1000,7 +1000,7 @@ def sso_acs_legacy(request):
 def sso_metadata(request):
     """Expose SP Metadata XML."""
     if getattr(settings, 'RATE_LIMIT_ENABLED', True):
-        ip = request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR', 'unknown')).split(',')[0].strip()
+        ip = request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR', 'unknown')).split(',')[-1].strip()
         rl_key = f"rl:sso_metadata:{ip}"
         attempts = cache.get(rl_key, 0)
         if attempts >= 20:
@@ -1110,7 +1110,7 @@ def forgot_password(request):
     """
     # --- Rate Limiting ---
     if getattr(settings, 'RATE_LIMIT_ENABLED', True):
-        ip = request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR', 'unknown')).split(',')[0].strip()
+        ip = request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR', 'unknown')).split(',')[-1].strip()
         rl_key = f"rl:forgot_pw:{ip}"
         attempts = cache.get(rl_key, 0)
         if attempts >= 3:
@@ -1172,7 +1172,7 @@ def reset_password(request):
     """
     # --- Rate Limiting ---
     if getattr(settings, 'RATE_LIMIT_ENABLED', True):
-        ip = request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR', 'unknown')).split(',')[0].strip()
+        ip = request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR', 'unknown')).split(',')[-1].strip()
         rl_key = f"rl:reset_pw:{ip}"
         attempts = cache.get(rl_key, 0)
         if attempts >= 5:
@@ -1216,8 +1216,8 @@ def reset_password(request):
 
         try:
             from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, BlacklistedToken
-            for token in OutstandingToken.objects.filter(user=user):
-                BlacklistedToken.objects.get_or_create(token=token)
+            for outstanding_token in OutstandingToken.objects.filter(user=user):
+                BlacklistedToken.objects.get_or_create(token=outstanding_token)
         except Exception:
             pass
 

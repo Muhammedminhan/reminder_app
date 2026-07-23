@@ -44,7 +44,7 @@ class UserType(DjangoObjectType):
         model = get_user_model()
         fields = (
             'id', 'username', 'email', 'first_name', 'last_name',
-            'is_superuser', 'is_staff', 'is_active',
+            'is_active',
             'company', 'departments', 'date_joined', 'profile_picture',
             'slack_user_id', 'manager', 'subordinates',
         )
