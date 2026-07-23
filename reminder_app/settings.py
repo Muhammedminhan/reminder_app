@@ -433,6 +433,13 @@ OAUTH2_PROVIDER = {
     'ALLOWED_REDIRECT_URI_SCHEMES': ['http', 'https'],
     'OAUTH2_BACKEND_CLASS': 'oauth2_provider.oauth2_backends.OAuthLibCore',
     'PKCE_REQUIRED': True,
+    # Disable the password grant — it bypasses the custom MFA flow in
+    # login_password + mfa_verify. All token issuance goes through those views.
+    'ALLOWED_GRANT_TYPES': [
+        'authorization_code',
+        'refresh_token',
+        'client_credentials',
+    ],
     'SCOPES': {
         'read': 'Read access',
         'write': 'Write access',
