@@ -535,14 +535,17 @@ def mfa_setup(request):
         device = TOTPDevice.objects.filter(user=user, name='default').first()
         if not device:
             device = TOTPDevice.objects.create(user=user, name='default', confirmed=False)
-        # Ensure device has a key; new TOTPDevice auto-generates key
-        # Build otpauth URI
+
+        # Never expose the TOTP secret once the device is confirmed — doing so
+        # would allow any bearer-token holder to permanently clone the MFA factor.
+        if device.confirmed:
+            return JsonResponse({'ok': True, 'already_confirmed': True})
+
+        # Build otpauth URI for the initial enrollment window only
         issuer = 'NotifyHub'
-        # device.key is bytes; convert to base32 (without padding)
         try:
             secret_b32 = base64.b32encode(device.bin_key).decode('ascii').replace('=', '')
         except Exception:
-            # Fallback for older versions
             secret_b32 = base64.b32encode(device.key).decode('ascii').replace('=', '')
         otpauth_uri = _build_otpauth_uri(user.username, issuer, secret_b32)
 

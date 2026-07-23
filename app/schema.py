@@ -1305,7 +1305,10 @@ class CreateScheduledTask(graphene.Mutation):
         user = get_authenticated_user(info)
         if not user:
             raise Exception('Authentication required')
-        
+        if not user.is_superuser:
+            is_admin = user.groups.filter(name__iexact='Company Admin').exists()
+            if not is_admin:
+                raise Exception('Only company admins can manage scheduled tasks')
         # Security: Only allow users to create tasks for their own company
         if not user.is_superuser:
             if not getattr(user, 'company_id', None):
@@ -1338,14 +1341,17 @@ class UpdateScheduledTask(graphene.Mutation):
         user = get_authenticated_user(info)
         if not user:
             raise Exception('Authentication required')
-        
+        if not user.is_superuser:
+            is_admin = user.groups.filter(name__iexact='Company Admin').exists()
+            if not is_admin:
+                raise Exception('Only company admins can manage scheduled tasks')
         qs = ScheduledTask.objects.all()
         if not user.is_superuser and getattr(user, 'company_id', None):
             qs = qs.filter(company_id=user.company_id)
         scheduled_task = qs.filter(pk=id).first()
         if not scheduled_task:
             raise Exception('Scheduled task not found')
-        
+
         for key, value in kwargs.items():
             if value is not None:
                 setattr(scheduled_task, key, value)
@@ -1363,7 +1369,10 @@ class DeleteScheduledTask(graphene.Mutation):
         user = get_authenticated_user(info)
         if not user:
             raise Exception('Authentication required')
-        
+        if not user.is_superuser:
+            is_admin = user.groups.filter(name__iexact='Company Admin').exists()
+            if not is_admin:
+                raise Exception('Only company admins can manage scheduled tasks')
         qs = ScheduledTask.objects.all()
         if not user.is_superuser and getattr(user, 'company_id', None):
             qs = qs.filter(company_id=user.company_id)
