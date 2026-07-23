@@ -10,10 +10,27 @@ export default function LoginPage() {
 
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
-        const token = params.get('token');
-        if (token) {
-            localStorage.setItem('access_token', token);
-            window.location.href = '/';
+        // Exchange the one-time code issued by google_auth_callback for a real token.
+        // Never accept a raw token from the URL — that would expose it in logs and
+        // browser history and enable session-fixation attacks.
+        const code = params.get('code');
+        if (code) {
+            const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
+            fetch(`${API_BASE}/google/token-exchange/`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code }),
+            })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.access_token) {
+                        localStorage.setItem('access_token', data.access_token);
+                        window.location.href = '/';
+                    } else {
+                        setError('Google sign-in failed. Please try again.');
+                    }
+                })
+                .catch(() => setError('Google sign-in failed. Please try again.'));
         }
     }, []);
 
