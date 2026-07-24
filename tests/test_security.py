@@ -84,13 +84,16 @@ class GraphQLTenantIsolationTest(TestCase):
             company=cls.company_b,
         )
 
-    def _gql(self, query, user=None):
+    def _gql(self, query, user=None, variables=None):
         client = Client()
         if user:
             client.force_login(user)
+        payload = {'query': query}
+        if variables:
+            payload['variables'] = variables
         return client.post(
             '/graphql/',
-            json.dumps({'query': query}),
+            json.dumps(payload),
             content_type='application/json',
         )
 
@@ -137,6 +140,36 @@ class GraphQLTenantIsolationTest(TestCase):
     def test_unauthenticated_reminders_returns_empty(self):
         resp = self._gql('{ reminders { id } }')
         self.assertEqual(self._data(resp, 'reminders'), [])
+
+    # CreateRole string/int comparison -----------------------------------------
+
+    def test_create_role_own_company_not_denied_by_type_mismatch(self):
+        """
+        CreateRole must accept a non-superuser passing their own company's ID.
+
+        Bug: graphene.ID arrives as a string ("1") while user.company_id is an
+        int (1).  Before the fix, "1" != 1 always evaluated True and every
+        non-superuser request was wrongly routed to the superuser-only gate.
+        """
+        mutation = '''
+            mutation CreateOwnRole($company: ID!) {
+                createRole(name: "Test Role", company: $company) {
+                    ok
+                }
+            }
+        '''
+        resp = self._gql(
+            mutation,
+            user=self.user_a,
+            variables={'company': str(self.company_a.pk)},
+        )
+        data = resp.json()
+        errors = data.get('errors') or []
+        error_msgs = [e.get('message', '') for e in errors]
+        self.assertFalse(
+            any('superuser' in m.lower() for m in error_msgs),
+            f'Non-superuser creating a role for their own company was wrongly denied: {error_msgs}',
+        )
 
 
 # ── SAML tenant binding ───────────────────────────────────────────────────────

@@ -1455,7 +1455,7 @@ class CreateRole(graphene.Mutation):
             raise Exception('Authentication required')
         
         # Only superusers can create system roles or roles for other companies
-        if is_system_role or (company and company != user.company_id):
+        if is_system_role or (company and int(company) != user.company_id):
             if not user.is_superuser:
                 raise Exception('Only superusers can create system roles or roles for other companies')
         
