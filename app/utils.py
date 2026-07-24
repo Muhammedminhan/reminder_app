@@ -1367,17 +1367,29 @@ def _ensure_sender_name(reminder):
 
 from django.core.cache import cache
 
+
+def get_client_ip(request) -> str:
+    """Return the real client IP for rate-limiting purposes.
+
+    On Cloud Run, Google's load balancer appends the real client IP to
+    X-Forwarded-For, so the rightmost entry is the one added by the last
+    trusted proxy and is not attacker-controllable.  The leftmost entries
+    are client-supplied and must never be trusted.
+    Falls back to REMOTE_ADDR for local dev / direct connections.
+    """
+    xff = request.META.get('HTTP_X_FORWARDED_FOR', '').strip()
+    if xff:
+        return xff.split(',')[-1].strip()
+    return request.META.get('REMOTE_ADDR', 'unknown')
+
+
 def is_rate_limited(request, key, limit_per_min):
     """Simple rate limiter using IP address and cache."""
     from django.conf import settings
     if not getattr(settings, 'RATE_LIMIT_ENABLED', True):
         return False
-    
-    # Get client IP — use the rightmost XFF entry (added by the last trusted proxy,
-    # e.g. the Google Cloud load balancer on Cloud Run). The leftmost entry is
-    # attacker-controllable and must NOT be used for rate-limiting.
-    xff = request.META.get('HTTP_X_FORWARDED_FOR', '').strip()
-    ip = xff.split(',')[-1].strip() if xff else request.META.get('REMOTE_ADDR', 'unknown')
+
+    ip = get_client_ip(request)
     
     cache_key = f"rl:{key}:{ip}"
     count = cache.get(cache_key)

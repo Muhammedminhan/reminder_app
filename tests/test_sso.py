@@ -5,14 +5,27 @@ from unittest.mock import patch, MagicMock
 from app.models import Company, User, CompanySSOSettings
 from onelogin.saml2.auth import OneLogin_Saml2_Auth
 
+ENTITY_ID = "https://idp.example.com"
+
+def _saml_xml(entity_id: str) -> bytes:
+    """Minimal SAML Response XML with an Issuer element."""
+    return (
+        f'<?xml version="1.0"?>'
+        f'<samlp:Response xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol"'
+        f' xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion">'
+        f'<saml:Issuer>{entity_id}</saml:Issuer>'
+        f'</samlp:Response>'
+    ).encode()
+
 class SSOTestCase(TestCase):
     def setUp(self):
         self.client = Client()
-        self.company = Company.objects.create(name="Acme Corp", domain="acme")
+        # domain must be the full email domain so the issuer check passes
+        self.company = Company.objects.create(name="Acme Corp", domain="acme.com")
         self.sso_settings = CompanySSOSettings.objects.create(
             company=self.company,
             sso_endpoint="https://idp.example.com/sso",
-            entity_id="https://idp.example.com",
+            entity_id=ENTITY_ID,
             public_certificate="MOCK_CERT",
             is_enabled=True
         )
@@ -36,17 +49,18 @@ class SSOTestCase(TestCase):
         mock_instance = MockAuth.return_value
         mock_instance.get_errors.return_value = []
         mock_instance.is_authenticated.return_value = True
-        # Mock attributes
+        # Provide response XML with a matching Issuer so the tenant-binding check passes
+        mock_instance.get_last_response_in_xml.return_value = _saml_xml(ENTITY_ID)
         mock_instance.get_attributes.return_value = {
             'email': ['alice@acme.com']
         }
-        
+        mock_instance.redirect_to.return_value = '/'
+
         url = reverse('sso_acs', kwargs={'company_id': self.company.pk})
-        # We need to POST SAMLResponse
         response = self.client.post(url, {'SAMLResponse': 'mock_response'})
-        
+
         self.assertEqual(response.status_code, 302) # Should redirect to /
-        
+
         # Verify User Created
         user = User.objects.get(email='alice@acme.com')
         self.assertEqual(user.company, self.company)
@@ -56,18 +70,20 @@ class SSOTestCase(TestCase):
     def test_sso_acs_existing_user(self, MockAuth):
         """Test logging in existing user via SSO"""
         existing_user = User.objects.create(username="bob", email="bob@acme.com", company=self.company)
-        
+
         mock_instance = MockAuth.return_value
         mock_instance.get_errors.return_value = []
         mock_instance.is_authenticated.return_value = True
+        mock_instance.get_last_response_in_xml.return_value = _saml_xml(ENTITY_ID)
         mock_instance.get_attributes.return_value = {
             'email': ['bob@acme.com']
         }
-        
+        mock_instance.redirect_to.return_value = '/'
+
         url = reverse('sso_acs', kwargs={'company_id': self.company.pk})
         response = self.client.post(url, {'SAMLResponse': 'mock_response'})
-        
+
         self.assertEqual(response.status_code, 302)
-        
+
         # Verify we are logged in as Bob? (Hard to test session in mock without inspecting response or context)
         # But absence of error and redirect suggests success.

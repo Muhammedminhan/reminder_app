@@ -6,7 +6,7 @@ from django.shortcuts import redirect, reverse
 from django.http import JsonResponse, HttpResponse, HttpResponseForbidden, HttpResponseBadRequest, HttpResponseServerError
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
-from .utils import process_scheduled_tasks, process_reminder_tasks
+from .utils import process_scheduled_tasks, process_reminder_tasks, get_client_ip
 from django.utils import timezone
 from .sso import SAMLHelper
 from django.shortcuts import render, redirect, get_object_or_404
@@ -332,20 +332,9 @@ def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
 
-def _get_client_ip(request) -> str:
-    """Return the real client IP for rate-limiting purposes.
-
-    On Cloud Run, Google's load balancer appends the real client IP to
-    X-Forwarded-For, so the rightmost entry is the one added by the last
-    trusted proxy and is not attacker-controllable (clients can prepend
-    arbitrary IPs to the left side of the header, but cannot forge the
-    rightmost entry).  Falls back to REMOTE_ADDR when no XFF is present
-    (local dev / direct connections).
-    """
-    xff = request.META.get('HTTP_X_FORWARDED_FOR', '').strip()
-    if xff:
-        return xff.split(',')[-1].strip()
-    return request.META.get('REMOTE_ADDR', 'unknown')
+# Alias so existing call sites in this module don't need updating.
+# The canonical implementation lives in app.utils.get_client_ip.
+_get_client_ip = get_client_ip
 
 def _has_totp_enabled(user):
     try:
