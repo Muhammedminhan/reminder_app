@@ -1373,12 +1373,11 @@ def is_rate_limited(request, key, limit_per_min):
     if not getattr(settings, 'RATE_LIMIT_ENABLED', True):
         return False
     
-    # Get client IP
-    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
-    if x_forwarded_for:
-        ip = x_forwarded_for.split(',')[0]
-    else:
-        ip = request.META.get('REMOTE_ADDR')
+    # Get client IP — use the rightmost XFF entry (added by the last trusted proxy,
+    # e.g. the Google Cloud load balancer on Cloud Run). The leftmost entry is
+    # attacker-controllable and must NOT be used for rate-limiting.
+    xff = request.META.get('HTTP_X_FORWARDED_FOR', '').strip()
+    ip = xff.split(',')[-1].strip() if xff else request.META.get('REMOTE_ADDR', 'unknown')
     
     cache_key = f"rl:{key}:{ip}"
     count = cache.get(cache_key)

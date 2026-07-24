@@ -7,8 +7,8 @@
 // by anyone with DevTools — we simply don't use one.
 //
 // Token lifecycle:
-//   access_token  — 30-minute lifetime, stored in localStorage
-//   refresh_token — 7-day lifetime, stored in localStorage, rotated on use
+//   access_token  — 30-minute lifetime, stored in sessionStorage
+//   refresh_token — 7-day lifetime, stored in sessionStorage, rotated on use
 //   Refresh happens automatically in refreshAccessToken() which is called by
 //   apollo.js on every 401 before the request is retried.
 
@@ -19,23 +19,23 @@ const CLIENT_ID = import.meta.env.VITE_CLIENT_ID || '';
 
 // ── Token storage helpers ─────────────────────────────────────────────────────
 
-export const getAccessToken  = () => localStorage.getItem('access_token');
-export const getRefreshToken = () => localStorage.getItem('refresh_token');
+export const getAccessToken  = () => sessionStorage.getItem('access_token');
+export const getRefreshToken = () => sessionStorage.getItem('refresh_token');
 
 const saveTokens = ({ access_token, refresh_token }) => {
-    localStorage.setItem('access_token', access_token);
-    if (refresh_token) localStorage.setItem('refresh_token', refresh_token);
+    sessionStorage.setItem('access_token', access_token);
+    if (refresh_token) sessionStorage.setItem('refresh_token', refresh_token);
 };
 
 const clearTokens = () => {
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('refresh_token');
+    sessionStorage.removeItem('access_token');
+    sessionStorage.removeItem('refresh_token');
 };
 
 // ── isAuthenticated — checks presence AND expiry ──────────────────────────────
 // Decodes the JWT payload (base-64 middle section) and compares `exp` against
 // the current time.  Returns false if:
-//   - no token in localStorage
+//   - no token in sessionStorage
 //   - token is not a valid JWT
 //   - token has already expired
 //

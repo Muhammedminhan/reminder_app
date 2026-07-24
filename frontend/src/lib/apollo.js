@@ -7,7 +7,7 @@
 // If the refresh itself fails (refresh token expired / revoked) the user is
 // redirected to /login via logout().
 //
-// The auth link always attaches the current access token from localStorage
+// The auth link always attaches the current access token from sessionStorage
 // so the refreshed token is automatically used on the retry.
 
 import {
@@ -40,7 +40,7 @@ const authLink = setContext((_, { headers }) => {
 
 // ── 3. Error link — intercept 401 and attempt token refresh ──────────────────
 // `forward(operation)` retries the same operation; the auth link above will
-// re-read the (now refreshed) token from localStorage on the retry.
+// re-read the (now refreshed) token from sessionStorage on the retry.
 //
 // The `_refreshing` flag prevents an infinite loop if the refresh itself
 // also returns 401 (shouldn't happen, but belt-and-suspenders).

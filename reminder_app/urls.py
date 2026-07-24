@@ -1,6 +1,7 @@
 """
 URL configuration for NotifyHub.
 """
+import os
 from django.urls import path, include, re_path
 from django.http import JsonResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
@@ -19,7 +20,6 @@ def robots_txt(request):
     scheme = 'https' if request.is_secure() else 'http'
     lines = [
         "User-agent: *",
-        "Disallow: /adrian-holovaty/",
         "Disallow: /o/",
         "Disallow: /graphql/",
         "Disallow: /health/",
@@ -55,8 +55,12 @@ def rate_limit_graphql(view_func):
 # ── URL patterns ─────────────────────────────────────────────────────────────
 admin.site.site_header = 'NotifyHub Administration'
 
+# Admin path is configurable to avoid advertising a fixed URL in logs/screenshots.
+# Set DJANGO_ADMIN_URL in the environment (without leading/trailing slashes).
+_ADMIN_URL = os.environ.get('DJANGO_ADMIN_URL', 'adrian-holovaty').strip('/') + '/'
+
 urlpatterns = [
-    path('adrian-holovaty/', admin.site.urls),
+    path(_ADMIN_URL, admin.site.urls),
     # health/ and robots.txt are defined here; duplicates in app/urls.py are
     # intentionally removed so these canonical versions always win.
     path('health/', health_check, name='health_check'),

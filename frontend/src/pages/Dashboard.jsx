@@ -47,7 +47,7 @@ import {
     Save,
     AlertTriangle
 } from 'lucide-react';
-import { logout, isAuthenticated } from '../lib/api';
+import { logout, isAuthenticated, getAccessToken } from '../lib/api';
 import { format } from 'date-fns';
 import CreateReminderModal from '../components/CreateReminderModal';
 import UpdateProfileModal from '../components/UpdateProfileModal';
@@ -55,7 +55,7 @@ import Toast, { useToast } from '../components/Toast';
 
 // Download a protected media URL via Authorization header (avoids token-in-URL leakage)
 function downloadProtectedFile(url) {
-  const token = localStorage.getItem('access_token') || '';
+  const token = getAccessToken() || '';
   fetch(url, { headers: { Authorization: `Bearer ${token}` } })
     .then(r => r.ok ? r.blob() : Promise.reject(r.status))
     .then(blob => {
@@ -74,7 +74,7 @@ function AuthImg({ src, alt, ...props }) {
   const [objectUrl, setObjectUrl] = React.useState('');
   React.useEffect(() => {
     if (!src) return;
-    const token = localStorage.getItem('access_token') || '';
+    const token = getAccessToken() || '';
     let revoked = false;
     fetch(src, { headers: { Authorization: `Bearer ${token}` } })
       .then(r => r.ok ? r.blob() : Promise.reject())
@@ -646,7 +646,7 @@ export default function Dashboard() {
     // REST Fallback for Identity (Ensures "Guest" never shows if authenticated)
     const [restUser, setRestUser] = useState(null);
     const fetchProfile = async () => {
-        const token = localStorage.getItem('access_token');
+        const token = getAccessToken();
         if (!token) return;
         try {
             const response = await fetch(`${import.meta.env.VITE_API_BASE || 'http://localhost:8000'}/user/profile/`, {

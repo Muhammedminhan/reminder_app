@@ -1,7 +1,7 @@
 # Codebase Audit Report — NotifyHub / reminder_app
 
 **Original audit date:** 2026-06-12
-**Last updated:** 2026-07-24
+**Last updated:** 2026-07-24 (second pass)
 **Scope:** Django backend (`app/`, `reminder_app/`), deployment config (Dockerfile, start.sh, cloudbuild.yaml), frontend env config. Excludes `.venv`, `node_modules`, `staticfiles`, migrations.
 **Method:** Three parallel review passes (security, correctness, configuration/deployment), with key findings independently re-verified against the source; followed by multi-pass iterative fix-and-re-audit cycles.
 
@@ -116,8 +116,9 @@
 - **File:** `app/views.py` (forgot_password)
 - Full reset URLs (containing the nonce) are logged when `DEBUG=True`. Log only the user ID and a hashed token reference.
 
-### L2. Bare `except Exception: pass` around role lookup — **FIXED**
+### L2. Bare `except Exception: pass` around role lookup — **FIXED** (extended 2026-07-24)
 - The specific silently-swallowed exceptions that could hide corrupted-data errors have been replaced with logged failures. The most critical cases (`_get_oauth_user`, JWT blacklist in `reset_password`) now call `logger.exception()` / `logger.warning(..., exc_info=True)` so failures are visible in monitoring.
+- Four additional bare `pass` blocks in `app/admin.py` now log: group assignment (B), `_column_exists` DB introspection (D), `ScheduledTask` creation for site verification (G — previously silent failure meant verification was never scheduled), and the Company Admin group membership check (J).
 
 ### L3. Redundant model import inside method — **STILL OPEN**
 - **File:** `app/models.py` — `from .models import UserRole` inside a method body in the same module.
@@ -146,6 +147,34 @@ The OAuth callback previously issued a one-time code in the redirect URL (`?code
 - Backend stores the token keyed by the nonce hash and redirects to `{FRONTEND_URL}/login` with no code in the URL.
 - Frontend reads the raw nonce from `sessionStorage` and POSTs it to `/google/token-exchange/`.
 - Exchange is atomic via `cache.add()` (Redis `SET NX`).
+
+---
+
+---
+
+## Django version — **IMPROVED** (2026-07-24)
+`requirements.txt` pinned `Django==4.2.14`, which is behind several LTS patch releases that fixed CVEs. Changed to `Django~=4.2.14` (compatible release specifier: `>=4.2.14, <4.3`) so `pip install` picks up the latest 4.2.x security patches without changing the major/minor version. Reproducible production builds should pin the resolved version in a compiled lockfile.
+
+---
+
+## Token storage — sessionStorage migration — **FIXED** (2026-07-24)
+Auth tokens (`access_token`, `refresh_token`) were stored in `localStorage`, which persists indefinitely across browser sessions and is accessible to any same-origin JavaScript. Although the strict CSP mitigates the XSS risk, the tokens were still readable by any extension or injected script that bypasses the CSP at the browser level.
+
+All token reads and writes now use `sessionStorage`, which is automatically cleared when the tab is closed, preventing long-term token theft from physical access or persistent malware. Affected files: `frontend/src/lib/api.js`, `frontend/src/pages/Login.jsx`, `frontend/src/pages/Dashboard.jsx`, `frontend/src/components/UpdateProfileModal.jsx`, `frontend/src/lib/apollo.js`.
+
+**Note:** Users will need to re-authenticate on each new tab/session. The 30-minute access token and 7-day refresh token lifetimes are unchanged; they are simply not persisted across tab restarts.
+
+---
+
+## X-Forwarded-For in utils.py — **FIXED** (2026-07-24)
+`app/utils.py:is_rate_limited()` was reading the **leftmost** XFF entry (`split(',')[0]`) — the entry that is entirely attacker-controlled. An attacker could send `X-Forwarded-For: 1.2.3.4` and rate-limit checks would key on `1.2.3.4` instead of their real IP, allowing them to rotate virtual IPs and bypass all rate limits on GraphQL. Fixed to use `split(',')[-1]` (rightmost, appended by the Cloud Run load balancer) consistent with the rest of the codebase.
+
+---
+
+## Admin URL obscurity — **IMPROVED** (2026-07-24)
+The admin path (`/adrian-holovaty/`) was published verbatim in `robots.txt` as `Disallow: /adrian-holovaty/`, which completely defeated the security-through-obscurity intent — any attacker who reads `robots.txt` (standard recon) would immediately discover the admin URL.
+
+Two changes: (1) the `Disallow: /adrian-holovaty/` line has been removed from `robots.txt`; (2) the admin path is now configurable via the `DJANGO_ADMIN_URL` environment variable (`reminder_app/urls.py`), defaulting to `adrian-holovaty` if unset. Production deployments can set a different unpredictable path without a code change. Note that this is defense-in-depth only — the real protection remains Django's authentication requirement.
 
 ---
 

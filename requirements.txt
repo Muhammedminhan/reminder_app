@@ -1,5 +1,5 @@
 # ── Core framework ────────────────────────────────────────────────────────────
-Django==4.2.14
+Django~=4.2.14
 asgiref==3.8.1
 gunicorn==21.2.0
 whitenoise==6.9.0

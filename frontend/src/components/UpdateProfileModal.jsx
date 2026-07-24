@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { gql, useMutation } from '@apollo/client';
+import { getAccessToken } from '../lib/api';
 import { X, User, Mail, Shield, Camera, Trash2 } from 'lucide-react';
 
 const UPDATE_ME = gql`
@@ -115,7 +116,7 @@ export default function UpdateProfileModal({ isOpen, onClose, user, onSuccess })
             const response = await fetch(`${API_BASE}/user/profile-picture/`, {
                 method: 'POST',
                 headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+                    'Authorization': `Bearer ${getAccessToken()}`
                 },
                 body: formData
             });
@@ -144,7 +145,7 @@ export default function UpdateProfileModal({ isOpen, onClose, user, onSuccess })
             const response = await fetch(`${API_BASE}/user/profile-picture/`, {
                 method: 'DELETE',
                 headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+                    'Authorization': `Bearer ${getAccessToken()}`
                 }
             });
 

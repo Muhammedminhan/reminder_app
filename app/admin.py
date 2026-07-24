@@ -230,7 +230,7 @@ class CustomUserAdmin(BaseUserAdmin):
                 user_group, _ = Group.objects.get_or_create(name='User')
                 obj.groups.add(user_group)
             except Exception:
-                pass
+                logger.warning("admin: failed to add user pk=%s to 'User' group", obj.pk, exc_info=True)
 
     def get_readonly_fields(self, request, obj=None):
         ro = list(super().get_readonly_fields(request, obj))
@@ -491,6 +491,7 @@ class ReminderAdmin(admin.ModelAdmin):
                 cols = [c.name for c in connection.introspection.get_table_description(cursor, table)]
                 return column_name in cols
         except Exception:
+            logger.warning("admin: _column_exists check failed for %s.%s", model._meta.db_table, column_name, exc_info=True)
             return False
 
     def get_queryset(self, request):
@@ -919,7 +920,7 @@ class SendGridDomainAuthAdmin(admin.ModelAdmin):
                                 company=obj.user.company,
                             )
                         except Exception:
-                            pass
+                            logger.error("admin: failed to create site_verification task for domain %s", obj.domain, exc_info=True)
                         messages.info(request, f"Site verification token emailed for {obj.domain}. Awaiting verification before sending GCP mapping records.")
                     else:
                         messages.warning(request, f"Could not obtain site verification token for {obj.domain}.")
@@ -1086,6 +1087,7 @@ def company_admin_domain_verified(user):
     try:
         is_company_admin = user.groups.filter(name__iexact='Company Admin').exists()
     except Exception:
+        logger.warning("admin: group check failed for user pk=%s, defaulting to non-admin", getattr(user, 'pk', '?'), exc_info=True)
         is_company_admin = False
     if not is_company_admin:
         return True  # Only restrict company admins

@@ -24,7 +24,7 @@ export default function LoginPage() {
                 .then(r => r.json())
                 .then(data => {
                     if (data.access_token) {
-                        localStorage.setItem('access_token', data.access_token);
+                        sessionStorage.setItem('access_token', data.access_token);
                         window.location.href = '/';
                     } else {
                         setError('Google sign-in failed. Please try again.');
