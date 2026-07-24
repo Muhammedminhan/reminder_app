@@ -9,17 +9,17 @@ export default function LoginPage() {
     const cardRef = useRef(null);
 
     useEffect(() => {
-        const params = new URLSearchParams(window.location.search);
-        // Exchange the one-time code issued by google_auth_callback for a real token.
-        // Never accept a raw token from the URL — that would expose it in logs and
-        // browser history and enable session-fixation attacks.
-        const code = params.get('code');
-        if (code) {
+        // After Google OAuth the backend redirects to /login with no code in the URL.
+        // The raw nonce stored in sessionStorage before the redirect is the only
+        // credential — it was never transmitted over any network connection.
+        const rawNonce = sessionStorage.getItem('oauth_nonce');
+        if (rawNonce) {
+            sessionStorage.removeItem('oauth_nonce');
             const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
             fetch(`${API_BASE}/google/token-exchange/`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ code }),
+                body: JSON.stringify({ nonce: rawNonce }),
             })
                 .then(r => r.json())
                 .then(data => {
@@ -34,9 +34,18 @@ export default function LoginPage() {
         }
     }, []);
 
-    const handleGoogleLogin = () => {
+    const handleGoogleLogin = async () => {
         const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000';
-        window.location.href = `${API_BASE}/google/login/`;
+        // Generate a 32-byte random nonce using the Web Crypto API.
+        // Only its SHA-256 hash travels over the network — the raw value stays
+        // in sessionStorage so no sensitive credential ever appears in a URL.
+        const nonceBytes = new Uint8Array(32);
+        crypto.getRandomValues(nonceBytes);
+        const rawNonce = Array.from(nonceBytes, b => b.toString(16).padStart(2, '0')).join('');
+        const hashBuffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(rawNonce));
+        const nonceHash = Array.from(new Uint8Array(hashBuffer), b => b.toString(16).padStart(2, '0')).join('');
+        sessionStorage.setItem('oauth_nonce', rawNonce);
+        window.location.href = `${API_BASE}/google/login/?nonce=${nonceHash}`;
     };
 
     const handleMouseMove = (e) => {

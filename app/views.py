@@ -1,4 +1,5 @@
 import os
+import re
 import uuid
 import hashlib
 from django.shortcuts import redirect, reverse
@@ -1327,9 +1328,17 @@ def google_auth_init(request):
     backend_url = config('BACKEND_URL', default=request.build_absolute_uri('/')[:-1])
     redirect_uri = f"{backend_url.rstrip('/')}{reverse('google-auth-callback')}"
 
-    # Generate state token and store it in cache (5-minute TTL)
+    # PKCE-style binding: the frontend hashes a random nonce with SHA-256 and
+    # sends the hash here. The raw nonce never leaves the browser (sessionStorage).
+    # After OAuth completes, only the client that holds the raw nonce can claim
+    # the token — preventing log-based theft where the code appeared in URLs.
+    client_nonce_hash = request.GET.get('nonce', '').strip()
+    if not re.fullmatch(r'[0-9a-f]{64}', client_nonce_hash):
+        return HttpResponseBadRequest("Missing or invalid nonce parameter (expected 64-char SHA-256 hex)")
+
+    # Generate state token and store it alongside the nonce hash (5-minute TTL)
     state = secrets.token_urlsafe(32)
-    cache.set(f"oauth_state:{state}", True, timeout=300)
+    cache.set(f"oauth_state:{state}", {'nonce_hash': client_nonce_hash}, timeout=300)
 
     params = {
         'client_id':     client_id,
@@ -1356,15 +1365,20 @@ def google_auth_callback(request):
     from datetime import timedelta
     from django.utils import timezone
 
-    # ── CSRF: verify state token ──────────────────────────────────────────────
+    # ── CSRF + nonce binding: verify state token ─────────────────────────────
     state = request.GET.get('state', '')
-    if not state or not cache.get(f"oauth_state:{state}"):
+    state_data = cache.get(f"oauth_state:{state}") if state else None
+    if not state_data or not isinstance(state_data, dict):
         return HttpResponseForbidden(
             "Invalid or expired OAuth state parameter. "
             "Please start the login flow again."
         )
     # Consume the state so it cannot be replayed
     cache.delete(f"oauth_state:{state}")
+
+    client_nonce_hash = state_data.get('nonce_hash', '')
+    if not re.fullmatch(r'[0-9a-f]{64}', client_nonce_hash):
+        return HttpResponseForbidden("OAuth state is missing a valid nonce binding")
 
     code = request.GET.get('code')
     if not code:
@@ -1475,16 +1489,15 @@ def google_auth_callback(request):
             scope='read write'
         )
 
-        # 5. Redirect back to frontend via a short-lived one-time code so the
-        # real access token is never exposed in the URL (browser history, logs,
-        # Referer headers). The frontend exchanges the code for the token via
-        # POST /google/token-exchange/ within 60 seconds.
-        one_time_code = secrets.token_urlsafe(24)
-        cache.set(f"google_auth_code:{_hash_token(one_time_code)}", local_token, timeout=60)
+        # 5. Store the token keyed by the client's nonce hash and redirect to
+        # the frontend with NO code or token in the URL.  The frontend holds
+        # the raw nonce in sessionStorage; it hashes it server-side identically
+        # to prove it initiated this OAuth flow, then claims the token.
+        # Nothing sensitive ever appears in any URL, log, or Referer header.
+        cache.set(f"google_auth_code:{client_nonce_hash}", local_token, timeout=300)
 
         frontend_url = config('FRONTEND_URL', default='http://localhost:5173')
-        target_url = f"{frontend_url}/login?code={one_time_code}"
-        return redirect(target_url)
+        return redirect(f"{frontend_url}/login")
         
     except Exception as e:
         logger.error(f"Google Callback Error: {str(e)}")
@@ -1494,24 +1507,34 @@ def google_auth_callback(request):
 @csrf_exempt
 @require_http_methods(["POST"])
 def google_token_exchange(request):
-    """Exchange the one-time code issued by google_auth_callback for the real access token.
+    """Claim the access token using the raw nonce held only in the browser's sessionStorage.
 
-    The code is valid for 60 seconds and can be used exactly once.
-    This avoids exposing the access token in the URL (CWE-598 / open redirect logs).
+    The frontend generated a random nonce before starting the OAuth flow, stored
+    the raw value in sessionStorage, and sent only its SHA-256 hash to the backend.
+    Presenting the raw nonce here proves the caller initiated this specific OAuth
+    flow — no code ever appeared in any URL, log, or Referer header.
+
+    cache.add() (Redis SET NX) is the atomic claim gate: it succeeds exactly once
+    across all concurrent callers, so the token can only be issued once.
     """
     try:
         data = json.loads(request.body or '{}')
-        code = str(data.get('code') or '').strip()
-        if not code or len(code) > 64:
-            return JsonResponse({'ok': False, 'message': 'Invalid code'}, status=400)
+        nonce_raw = str(data.get('nonce') or '').strip()
+        if not nonce_raw or len(nonce_raw) > 128:
+            return JsonResponse({'ok': False, 'message': 'Invalid request'}, status=400)
 
-        cache_key = f"google_auth_code:{_hash_token(code)}"
-        token = cache.get(cache_key)
-        if not token:
+        nonce_hash = hashlib.sha256(nonce_raw.encode()).hexdigest()
+        cache_key = f"google_auth_code:{nonce_hash}"
+        # Atomic claim: cache.add() is SET NX in Redis — returns True exactly once.
+        # A second concurrent request hits this guard and is rejected immediately.
+        claimed_key = f"google_auth_code_claimed:{nonce_hash}"
+        if not cache.add(claimed_key, 1, timeout=360):
             return JsonResponse({'ok': False, 'message': 'Code expired or already used'}, status=400)
 
-        # One-time use — delete immediately
+        token = cache.get(cache_key)
         cache.delete(cache_key)
+        if not token:
+            return JsonResponse({'ok': False, 'message': 'Code expired or already used'}, status=400)
         return JsonResponse({'ok': True, 'access_token': token})
     except json.JSONDecodeError:
         return JsonResponse({'ok': False, 'message': 'Invalid JSON'}, status=400)
