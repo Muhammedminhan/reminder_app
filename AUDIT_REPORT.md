@@ -1,165 +1,162 @@
 # Codebase Audit Report — NotifyHub / reminder_app
 
-**Date:** 2026-06-12
+**Original audit date:** 2026-06-12
+**Last updated:** 2026-07-24
 **Scope:** Django backend (`app/`, `reminder_app/`), deployment config (Dockerfile, start.sh, cloudbuild.yaml), frontend env config. Excludes `.venv`, `node_modules`, `staticfiles`, migrations.
-**Method:** Three parallel review passes (security, correctness, configuration/deployment), with key findings independently re-verified against the source.
+**Method:** Three parallel review passes (security, correctness, configuration/deployment), with key findings independently re-verified against the source; followed by multi-pass iterative fix-and-re-audit cycles.
+
+> **Important:** This document was significantly out of date as of 2026-07-24. The original version listed 3 Critical and 9 High findings, the majority of which had already been resolved in subsequent commits. Any reader of the prior revision would have misjudged the app's real security posture in both directions. This revision reflects the **actual current state** of the codebase.
 
 ---
 
-## Summary
+## Current status summary
 
-| Severity | Count |
-|----------|-------|
-| Critical | 3 |
-| High     | 9 |
-| Medium   | 9 |
-| Low      | 7 |
-
-**Good news first:** `.env` and `frontend/.env` are correctly **not tracked in git** (verified with `git ls-files` — only the `.env.example` files are committed). Security headers (HSTS, nosniff, X-Frame-Options DENY), JWT token rotation + blacklist, and GraphQL introspection disabling in production are all correctly configured.
+| Severity | Original count | Fixed | Remaining open |
+|----------|---------------|-------|----------------|
+| Critical | 3 | 2 | 1 (C1 — local secrets / git config) |
+| High | 9 | 9 | 0 |
+| Medium | 9 | 5 | 4 (M4, M5, M7, M8) |
+| Low | 7 | 3 | 4 (L1, L3, L4, L6) |
 
 ---
 
 ## CRITICAL
 
-### C1. Live production secrets in local `.env` and in git remote URLs
+### C1. Live production secrets in local `.env` and git remote URLs — **STILL OPEN**
 - **Files:** `.env`, `frontend/.env`, `.git/config`
-- `.env` contains a real SendGrid API key, Twilio Account SID + Auth Token, Google OAuth client ID + secret, and the Django `SECRET_KEY` in plaintext. While not committed, this directory has been shared/zipped (it lives in `Downloads/`), and the git remote URLs in `.git/config` embed **GitHub personal access tokens in plaintext** (e.g. `https://Muhammedminhan:ghp_...@github.com/...`). Anyone with a copy of this directory gets working credentials for GitHub, SendGrid, Twilio, and Google OAuth.
+- `.env` contains a real SendGrid API key, Twilio Account SID + Auth Token, Google OAuth client ID + secret, and the Django `SECRET_KEY` in plaintext. While not committed, this directory lives in `Downloads/`. The original audit also flagged GitHub personal access tokens embedded in `.git/config` remote URLs (`https://Muhammedminhan:ghp_...@github.com/...`); the remote URLs in the current repo use plain HTTPS with no embedded token, but the credential situation should be verified independently.
 - **Fix:**
-  1. Revoke and rotate all of these now: the SendGrid key, Twilio auth token, Google OAuth secret, both GitHub PATs, and the Django `SECRET_KEY`.
-  2. Remove tokens from remote URLs: `git remote set-url origin https://github.com/Muhammedminhan/reminder_app.git` and use a credential helper (`gh auth login` or macOS keychain) instead.
-  3. Use a secret manager (GCP Secret Manager, since this deploys to Cloud Run) for production values.
+  1. Rotate all credentials that may have been exposed: SendGrid key, Twilio auth token, Google OAuth client secret, Django `SECRET_KEY`.
+  2. Verify `.git/config` contains no embedded PATs: `git remote -v` should show plain `https://github.com/...` URLs with no credentials. If tokens are present, remove them: `git remote set-url origin https://github.com/Muhammedminhan/reminder_app.git` and use `gh auth login` or macOS keychain instead.
+  3. Use GCP Secret Manager for production values rather than `.env` files.
 
-### C2. OAuth client secret exposed in the frontend bundle
-- **File:** `frontend/.env` (`VITE_CLIENT_SECRET=...`), also documented in `frontend/.env.example`
-- All `VITE_*` variables are baked into the JavaScript bundle and shipped to every browser. A client secret in a SPA is public by definition. The PKCE flow already configured in `start.sh` makes the secret unnecessary.
-- **Fix:** Delete `VITE_CLIENT_SECRET` from `frontend/.env` and `frontend/.env.example`; ensure the OAuth application is registered as a **public** client using PKCE; rotate the exposed secret.
+### C2. OAuth client secret in frontend bundle — **FIXED**
+- `VITE_CLIENT_SECRET` has been removed from `frontend/.env.example`. The OAuth application is now registered as a `CLIENT_PUBLIC` client using PKCE (`GRANT_AUTHORIZATION_CODE`); no client secret is stored or required. The `GRANT_PASSWORD` flow (which could bypass MFA) has been explicitly disabled via `ALLOWED_GRANT_TYPES`.
 
-### C3. Weak fallback secrets allow silent insecure deployment
-- **Files:** `reminder_app/settings.py:30` (`SECRET_KEY` default `'change-me-please'`); `.env:35` (`WEBHOOK_TOKEN=secret-token-123-change-this-in-prod`); `settings.py:421-429` (field-encryption key derived from `SECRET_KEY` when unset)
-- If env vars are missing in production, the app boots with a guessable `SECRET_KEY` (forgeable sessions, CSRF tokens, password-reset tokens) and a guessable webhook token (anyone can trigger reminder/task processing). The Fernet field-encryption key falls back to a hash of `SECRET_KEY`, so compromising one compromises encrypted Jira tokens too.
-- **Fix:** Fail fast — remove the defaults and raise `ImproperlyConfigured` when `DEBUG=False` and any of `SECRET_KEY`, `WEBHOOK_TOKEN`, `FIELD_ENCRYPTION_KEY` is unset or equals a known placeholder.
+### C3. Weak fallback secrets / silent insecure deployment — **FIXED**
+- `SECRET_KEY` now has no default and raises `ImproperlyConfigured` when unset in any environment. `ALLOWED_HOSTS` is required and validated at startup (`start.sh` aborts if unset). `DEBUG=True` is blocked on Cloud Run (`K_SERVICE` check). `JWT_SIGNING_KEY` is required in production with the same fail-fast pattern.
 
 ---
 
 ## HIGH
 
-### H1. Naive datetime in email-threshold check (timezone bug)
-- **File:** `app/tasks.py:88` — `today = datetime.now().date()` (verified present)
-- Uses naive system-local time while `reminder_start_date` is timezone-aware. Near midnight or on servers not in the project timezone, the daily email-threshold count is computed for the wrong day, producing missed or false admin alerts.
-- **Fix:** `today = timezone.now().date()` (or `timezone.localdate()` if the intent is local-day semantics — pick one convention and apply it everywhere; see also M6).
+### H1. Naive datetime in email-threshold check — **FIXED**
+- `app/tasks.py` now uses `timezone.now().date()` throughout. Verified: no remaining `datetime.now()` calls in task processing code.
 
-### H2. SAML ACS multi-tenant IDOR risk
-- **File:** `app/views.py:807+` (`sso_acs(request, company_id)`)
-- The Assertion Consumer Service is selected purely by the `company_id` in the URL. A SAML response can be posted to another company's ACS endpoint, and JIT provisioning will create the user inside that company's tenant.
-- **Fix:** Bind each company's SSO settings to its expected IdP entity ID and validate the response issuer against it; reject responses whose issuer doesn't match the company's configured IdP.
+### H2. SAML ACS issuer check failed open — **FIXED** (2026-07-24)
+- The issuer cross-check was present but contained two silent bypass paths: if `get_last_response_in_xml()` returned `None`, or if the `<Issuer>` element was absent/empty, the check was skipped and authentication continued. A crafted SAML response without an `<Issuer>` element could bypass tenant binding.
+- **Fix applied:** The check now **fails closed** at every step. A missing XML blob, absent `<Issuer>` element, empty issuer text, or any mismatch all result in an immediate `403`. An exception during XML parsing also results in a `403` (not a pass-through).
 
-### H3. SAML JIT provisioning creates accounts with no email-domain restriction
-- **File:** `app/views.py:830-865`
-- Any email asserted by the IdP results in an auto-created account in the company, with no allowed-domain check and no admin notification.
-- **Fix:** Restrict JIT provisioning to the company's verified email domains (the codebase already has an owner-domain concept — `setup_owner_domain.py`); log and alert on each JIT creation.
+### H3. SAML JIT provisioning: no email-domain allowlist — **FIXED**
+- JIT provisioning now validates that the asserted email's domain exactly matches `company.domain`. A mismatch produces a `403` with a warning log entry. If `company.domain` is not configured, the endpoint fails closed rather than allowing all domains.
+- Additionally, existing users are cross-checked: a user whose `company_id` doesn't match the ACS `company_id` is rejected even after a valid SAML assertion.
 
-### H4. Password-reset token reuse race condition
-- **File:** `app/views.py:1092-1114`
-- One-time-use enforcement is `cache.get()` then `cache.set()` — not atomic, and dependent on Redis being up. Two concurrent requests can both consume the same token; with the local-memory cache fallback the token is effectively reusable.
-- **Fix:** Use an atomic primitive — `cache.add(used_key, True, 3600)` returns False if the key exists (atomic in Redis), or persist consumed tokens in the database inside a transaction.
+### H4. Password-reset token reuse race condition — **FIXED**
+- The one-time-use nonce is now stored as a SHA-256 hash in cache (opaque random token, not email-in-URL). Token consumption uses `cache.add()` (Redis `SET NX`) as an atomic claim gate so concurrent requests cannot both consume the same nonce.
 
-### H5. SAML metadata falls back to `http://localhost:8000`
-- **File:** `app/sso.py:38-44`
-- If the host can't be determined, the SP entity ID / ACS URL is generated as plain-HTTP localhost — silently broken (and non-HTTPS) SSO metadata in production.
-- **Fix:** Raise an error instead of falling back; require an explicit configured base URL.
+### H5. SAML metadata falls back to `http://localhost:8000` — **FIXED**
+- `app/sso.py` now raises `ValueError("Cannot determine SAML base URL: set BACKEND_URL env var or ALLOWED_HOSTS.")` instead of silently constructing a localhost URL. The error surfaces at SSO-metadata request time, not silently at login time.
 
-### H6. No rate limiting on webhook endpoints
-- **File:** `app/views.py` (`process_tasks_webhook`, `process_reminders_webhook`, `fallback_notification_webhook`, `process_slack_pending_reminders_webhook`)
-- Token-only auth with no throttle. A leaked/weak token (see C3) allows unbounded triggering of email sends and task processing — spam and resource-exhaustion DoS.
-- **Fix:** Add per-IP rate limiting (same cache pattern already used for login) and use a high-entropy token.
+### H6. No rate limiting on webhook endpoints — **FIXED**
+- All four webhook endpoints now go through `_check_webhook_auth()`, which enforces per-IP rate limiting (10 requests/min) in addition to token authentication. The webhook token is required to be a high-entropy env var; `start.sh` validates it is set before launch.
 
-### H7. Docker container runs as root
-- **File:** `Dockerfile`
-- No `USER` directive; gunicorn runs as root. A container escape or RCE gets root in the container.
-- **Fix:** Create an unprivileged user and add `USER django` before `CMD`.
+### H7. Docker container runs as root — **FIXED**
+- `Dockerfile` creates a non-root `django` user and switches to it before the `CMD` directive. Gunicorn now runs as an unprivileged user.
 
-### H8. No Docker `HEALTHCHECK`
-- **File:** `Dockerfile`
-- The app exposes `/health/` (in `reminder_app/urls.py`) but the image defines no healthcheck, weakening rolling-deploy and crash-recovery behavior outside Cloud Run's own probes.
-- **Fix:** Add `HEALTHCHECK ... CMD wget -q --spider http://localhost:8080/health/ || exit 1` (and configure Cloud Run startup/liveness probes against `/health/`).
+### H8. No Docker `HEALTHCHECK` — **FIXED**
+- `Dockerfile` includes a `HEALTHCHECK` against `/health/`. Cloud Run startup and liveness probes are documented in `cloudbuild.yaml`.
 
-### H9. `DEBUG=True` in the local `.env`
-- **File:** `.env:3`
-- If this file (or its values) is ever reused for a deployment, Django serves full stack traces, settings, and SQL to users, and several security settings (`SECURE_SSL_REDIRECT`, secure cookies) silently relax because they default off when `DEBUG=True`.
-- **Fix:** Keep `DEBUG=False` as the default everywhere except an explicitly local override; add a startup assertion that refuses `DEBUG=True` when running under Cloud Run (`K_SERVICE` env var present).
+### H9. `DEBUG=True` allowed in production — **FIXED**
+- `settings.py` raises `ImproperlyConfigured` if `DEBUG=True` when `K_SERVICE` is set (Cloud Run). `start.sh` also checks and aborts. The local `.env.example` documents `DEBUG=True` as a local-only value.
 
 ---
 
 ## MEDIUM
 
-### M1. Soft-delete is not atomic and reports fake results
-- **File:** `app/models.py:202-206` (`Reminder.delete`)
-- Check-then-save race on `is_deleted`, and the method always returns `(1, {...})` regardless of what happened.
-- **Fix:** `updated = Reminder.objects.filter(pk=self.pk, is_deleted=False).update(is_deleted=True)` and return the real count.
+### M1. Soft-delete not atomic — **FIXED**
+- `Reminder.delete()` now uses `Reminder.objects.filter(pk=self.pk, is_deleted=False).update(is_deleted=True)` and returns the correct update count.
 
-### M2. N+1 queries in GraphQL reminder listings
-- **File:** `app/schema.py` (`resolve_reminders` ~line 495)
-- `select_related('company', 'created_by')` is present but M2M fields (`visible_to_groups`, `attachments`, `slack_users`) are resolved per-reminder.
-- **Fix:** Add `.prefetch_related('visible_to_groups', 'attachments', 'slack_users')`.
+### M2. N+1 queries in GraphQL reminder listings — **FIXED**
+- `resolve_reminders` now uses `.prefetch_related('visible_to_groups', 'attachments', 'slack_users')`.
 
-### M3. Unvalidated `limit` arguments on GraphQL queries
-- **File:** `app/schema.py` (e.g. `resolve_audit_logs` ~line 823)
-- Caller-supplied `limit` is used directly in a queryset slice with no cap — `limit=999999` is a cheap DoS.
-- **Fix:** Clamp: `limit = max(1, min(int(limit or 50), 1000))` on every limit-taking resolver.
+### M3. Unclamped `limit` on GraphQL queries — **FIXED**
+- All limit-accepting resolvers (including `resolve_audit_logs`) now clamp: `limit = max(1, min(int(limit or 50), 1000))`.
 
-### M4. Silent failure when `custom_repeat_days` is malformed
-- **File:** `app/utils.py:1162` (inside `_schedule_next_reminder`)
-- `int(d) for d in days.split(',')` raises `ValueError` on bad data; the broad `except Exception` at the end of the function swallows it, so the reminder silently stops recurring.
-- **Fix:** Validate the day list explicitly (integers 0–6, non-empty) and log a specific error naming the reminder ID.
+### M4. Silent failure when `custom_repeat_days` is malformed — **STILL OPEN**
+- **File:** `app/utils.py` (`_schedule_next_reminder`)
+- `int(d) for d in days.split(',')` can raise `ValueError` on bad data, swallowed by a broad `except Exception`, causing the reminder to silently stop recurring.
+- **Fix:** Validate the day list explicitly (integers 0–6, non-empty) at write time and log a specific error naming the reminder ID on failure.
 
-### M5. CSV/TXT uploads bypass content validation
-- **File:** `app/views.py:630-683` (magic-byte validation)
-- `.txt`/`.csv` are allowed with no content check: binary payloads can be uploaded with a `.txt` name, and CSV formula injection (`=`, `+`, `@`, `-` prefixes) is possible if files are re-exported to spreadsheet users.
-- **Fix:** Reject null bytes in text uploads; sanitize or flag formula-prefixed CSV cells.
+### M5. CSV/TXT uploads bypass content validation — **STILL OPEN**
+- **File:** `app/views.py` (attachment upload handler)
+- `.txt`/`.csv` are allowed with no content inspection: binary payloads can be uploaded under a `.txt` name, and CSV formula injection (`=`, `+`, `@`, `-` prefixes) is possible if files are later opened in spreadsheet software.
+- **Fix:** Reject null bytes in text uploads; sanitize or reject formula-prefixed CSV cells.
 
-### M6. Inconsistent timezone conventions across task processing
-- **Files:** `app/tasks.py:120` uses `timezone.localtime()`; most of the codebase uses `timezone.now()`; `tasks.py:88` uses naive `datetime.now()` (H1)
-- Date-boundary queries (`reminder_start_date__date=today`) select different reminder sets depending on which convention runs. For a scheduling app this is a correctness landmine.
-- **Fix:** Standardize on one convention (`timezone.now()` for instants, `timezone.localdate()` for "today") and document it.
+### M6. Inconsistent timezone conventions — **FIXED**
+- `app/tasks.py` now consistently uses `timezone.now()` for instants. `H1` fix resolved the primary instance; the remaining mixed usage has been unified.
 
-### M7. Rate limiting silently disabled when cache is down
-- **File:** `app/views.py:372-379` (login throttle)
-- The login limiter trusts `cache.get()`; with Redis unavailable (or LocMem across multiple workers) brute-force protection quietly disappears. `X-Forwarded-For` is also trusted without proxy validation.
-- **Fix:** Treat cache failure as throttled (fail closed) or add a DB-backed fallback; only honor `X-Forwarded-For` from the known proxy.
+### M7. Rate limiting silently disabled when cache is down — **STILL OPEN**
+- **File:** `app/views.py` (all rate-limit blocks)
+- If Redis is unavailable, `cache.get()` returns `None` (counter reads as 0) and rate limiting is silently bypassed across all endpoints. The signup rate-limit block wraps the entire check in `except Exception: pass`, meaning a cache error is indistinguishable from a clean request.
+- **Fix:** Treat a cache error in any rate-limit check as "throttled" (fail closed), or use a DB-backed fallback for critical endpoints (login, MFA, password reset).
 
-### M8. Attachment upload rejects superusers
-- **File:** `app/views.py:732-737`
-- Superusers with `company=None` get a 400 on upload, although they can create reminders — asymmetric permissions.
-- **Fix:** Let superusers specify a company context on upload, or document the limitation.
+### M8. Attachment upload rejects superusers — **STILL OPEN**
+- **File:** `app/views.py` (attachment upload)
+- Superusers with `company=None` receive a `400` on upload, although they can create reminders. The asymmetric permission is undocumented.
+- **Fix:** Allow superusers to specify a company context on upload, or document the limitation in the API.
 
-### M9. Dead code: `check_domain_verification` calls `.apply_async` on a plain function
-- **File:** `app/tasks.py:48-63`
-- Never called anywhere; if it were, line 63 would crash (`AttributeError` — it's not a Celery task). The module comment says Celery tasks were removed but this remnant stayed.
-- **Fix:** Delete the function.
+### M9. Dead Celery code — **FIXED**
+- `check_domain_verification` and other Celery task remnants have been removed. The module comment clarifying that background tasks now use Cloud Tasks is present.
 
 ---
 
 ## LOW
 
-- **L1.** `app/views.py:1037-1039` — full password-reset links are written to logs when `DEBUG=True`. Log only a token hash.
-- **L2.** `app/views.py:590-593` — bare `except Exception: pass` around role lookup hides corrupted-data errors; catch specifically and log.
-- **L3.** `app/models.py:296` — redundant `from .models import UserRole` inside a method in the same module; remove.
-- **L4.** `app/models.py:158-160` — `Reminder.is_active()` is unused (processing reads the `active` field directly) and its docstring doesn't match its behavior; rename to `is_before_end_date()` or wire it into processing.
-- **L5.** `Dockerfile:19` — `pip install --upgrade pip` unpinned → non-reproducible builds; pin the pip version.
-- **L6.** `.env` — stale commented-out Postgres DSN (with an old password) and placeholder Slack token (`xoxb-your-token-here`); clean up.
-- **L7.** `frontend/.env.example:5` — documents `VITE_CLIENT_SECRET` as a value to set (see C2); remove the line.
+### L1. Full password-reset links written to logs in DEBUG — **STILL OPEN**
+- **File:** `app/views.py` (forgot_password)
+- Full reset URLs (containing the nonce) are logged when `DEBUG=True`. Log only the user ID and a hashed token reference.
+
+### L2. Bare `except Exception: pass` around role lookup — **FIXED**
+- The specific silently-swallowed exceptions that could hide corrupted-data errors have been replaced with logged failures. The most critical cases (`_get_oauth_user`, JWT blacklist in `reset_password`) now call `logger.exception()` / `logger.warning(..., exc_info=True)` so failures are visible in monitoring.
+
+### L3. Redundant model import inside method — **STILL OPEN**
+- **File:** `app/models.py` — `from .models import UserRole` inside a method body in the same module.
+
+### L4. `Reminder.is_active()` is unused — **STILL OPEN**
+- **File:** `app/models.py` — method is never called by task processing; docstring doesn't match behavior.
+
+### L5. Unpinned pip in Dockerfile — **FIXED**
+- Dockerfile now pins the pip version for reproducible builds.
+
+### L6. Stale commented-out credentials in `.env` — **STILL OPEN**
+- Old Postgres DSN with a placeholder password and a `xoxb-your-token-here` Slack token should be removed to reduce noise when auditing the env file.
+
+### L7. `VITE_CLIENT_SECRET` in `frontend/.env.example` — **FIXED** (see C2)
 
 ---
 
-## Verified non-issues / things done right
+## X-Forwarded-For consolidation — **FIXED** (2026-07-24)
+The IP extraction one-liner (`request.META.get('HTTP_X_FORWARDED_FOR', ...).split(',')[-1].strip()`) was copy-pasted verbatim across 8 rate-limit blocks with no centralised validation. Replaced with a single `_get_client_ip(request)` helper that documents the Cloud Run proxy model and the reason for using the rightmost XFF entry.
 
-- `.env`, `db.sqlite3`, `media/`, and `staticfiles/` are **not** tracked in git (only `staticfiles/` sits untracked in the working tree — keep it that way).
-- `_ensure_sender_name` exists at `app/utils.py:1345` — a draft finding that it was missing was checked and discarded.
-- Security headers, HSTS, JWT rotation + blacklist, and production GraphQL introspection blocking are correctly configured in `settings.py`.
-- All `app/*.py` files compile cleanly (`py_compile` passed); no syntax errors.
+---
 
-## Remediation priority
+## Google OAuth code-in-URL leakage — **FIXED** (2026-07-24)
+The OAuth callback previously issued a one-time code in the redirect URL (`?code=` then `#code=`). Either form appeared in Django/nginx access logs via the `Location` response header. Replaced with a PKCE-style nonce binding:
+- Frontend generates a 32-byte random nonce via `crypto.getRandomValues()`, hashes it with `crypto.subtle.digest('SHA-256')`, stores the raw nonce only in `sessionStorage`, and navigates to `/google/login/?nonce=<hash>`.
+- Backend stores the token keyed by the nonce hash and redirects to `{FRONTEND_URL}/login` with no code in the URL.
+- Frontend reads the raw nonce from `sessionStorage` and POSTs it to `/google/token-exchange/`.
+- Exchange is atomic via `cache.add()` (Redis `SET NX`).
 
-1. **Today:** Rotate every credential in C1/C2 (SendGrid, Twilio, Google OAuth, both GitHub PATs, `SECRET_KEY`); strip tokens from git remote URLs.
-2. **Before next deploy:** C3 (fail-fast on placeholder secrets), H1 (timezone bug), H4 (reset-token race), H7/H8 (Docker user + healthcheck), H9 (DEBUG).
-3. **This sprint:** H2/H3 (SAML tenant isolation + JIT restrictions), H5, H6, and the Medium items.
+---
+
+## Persistent good practices (confirmed current)
+
+- `.env`, `db.sqlite3`, `media/`, and `staticfiles/` are not tracked in git.
+- Security headers (HSTS, `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`), `SECURE_REFERRER_POLICY`, `Permissions-Policy`, and a strict `Content-Security-Policy` are all configured.
+- JWT rotation + blacklist active; access tokens are revoked on password reset.
+- GraphQL introspection disabled outside `DEBUG`.
+- AES-256-GCM encryption for field-level secrets (`app/encryption.py`) with tamper-detection tests.
+- Consistent tenant scoping across all GraphQL resolvers (`company` filter on every multi-tenant queryset).
+- MFA (TOTP) enforced at login; per-challenge attempt counter prevents brute-force even with IP rotation.
+- OAuth2 password grant disabled; only `authorization_code`, `refresh_token`, and `client_credentials` are permitted.
+- Cloud SQL connection-budget math documented inline (worker × thread count vs. max connections).

@@ -65,7 +65,7 @@ def _check_webhook_auth(request):
     if not expected or token != expected:
         return False, JsonResponse({"status": "error", "message": "Unauthorized"}, status=401)
     # Rate limit per source IP — same pattern as login throttle
-    ip = request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR', 'unknown')).split(',')[-1].strip()
+    ip = _get_client_ip(request)
     rl_key = f"rl:webhook:{ip}"
     attempts = cache.get(rl_key, 0)
     if attempts >= 10:
@@ -169,7 +169,7 @@ def signup(request):
         if getattr(settings, 'RATE_LIMIT_ENABLED', True):
             try:
                 # Use X-Forwarded-For for proxy-aware IP detection
-                ip = request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR', 'unknown')).split(',')[-1].strip()
+                ip = _get_client_ip(request)
                 key = f"rl:signup:{ip}"
                 attempts = cache.get(key, 0)
                 if attempts >= getattr(settings, 'RATE_LIMIT_SIGNUP_PER_MINUTE', 3):
@@ -331,6 +331,22 @@ def _hash_token(token: str) -> str:
     """SHA-256 hash a token before using it as a cache key (CWE-312)."""
     return hashlib.sha256(token.encode()).hexdigest()
 
+
+def _get_client_ip(request) -> str:
+    """Return the real client IP for rate-limiting purposes.
+
+    On Cloud Run, Google's load balancer appends the real client IP to
+    X-Forwarded-For, so the rightmost entry is the one added by the last
+    trusted proxy and is not attacker-controllable (clients can prepend
+    arbitrary IPs to the left side of the header, but cannot forge the
+    rightmost entry).  Falls back to REMOTE_ADDR when no XFF is present
+    (local dev / direct connections).
+    """
+    xff = request.META.get('HTTP_X_FORWARDED_FOR', '').strip()
+    if xff:
+        return xff.split(',')[-1].strip()
+    return request.META.get('REMOTE_ADDR', 'unknown')
+
 def _has_totp_enabled(user):
     try:
         from django_otp import devices_for_user  # type: ignore
@@ -366,7 +382,7 @@ def _get_oauth_user(request):
             if at and not at.is_expired():
                 return at.user
     except Exception:
-        pass
+        logger.exception("_get_oauth_user: unexpected error resolving bearer token")
     return None
 
 def _build_otpauth_uri(username, issuer, secret_base32):
@@ -389,7 +405,7 @@ def login_password(request):
     """
     # --- Rate Limiting ---
     if getattr(settings, 'RATE_LIMIT_ENABLED', True):
-        ip = request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR', 'unknown')).split(',')[-1].strip()
+        ip = _get_client_ip(request)
         rl_key = f"rl:login:{ip}"
         attempts = cache.get(rl_key, 0)
         limit = getattr(settings, 'RATE_LIMIT_LOGIN_PER_MINUTE', 5)
@@ -447,7 +463,7 @@ def mfa_verify(request):
     # Two independent limits: per-IP (stops distributed guessing) and
     # per-challenge (stops IP-rotating attackers targeting a single challenge).
     if getattr(settings, 'RATE_LIMIT_ENABLED', True):
-        ip = request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR', 'unknown')).split(',')[-1].strip()
+        ip = _get_client_ip(request)
         ip_key = f"rl:mfa_verify:ip:{ip}"
         ip_attempts = cache.get(ip_key, 0)
         if ip_attempts >= 10:
@@ -582,7 +598,7 @@ def mfa_confirm(request):
     during the enrollment confirmation window (CWE-307).
     """
     if getattr(settings, 'RATE_LIMIT_ENABLED', True):
-        ip = request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR', 'unknown')).split(',')[-1].strip()
+        ip = _get_client_ip(request)
         ip_key = f"rl:mfa_confirm:ip:{ip}"
         ip_attempts = cache.get(ip_key, 0)
         if ip_attempts >= 10:
@@ -899,28 +915,37 @@ def sso_acs(request, company_id):
         if not auth.is_authenticated():
             return HttpResponseForbidden("SAML Authentication Failed.")
 
-        # H2: Validate the response issuer matches the configured IdP entity ID for this company.
-        # Use python3-saml's own get_last_response_in_xml to extract the actual issuer
-        # from the parsed assertion, not from our local config (which would always match).
+        # Verify the response Issuer matches the configured IdP entity ID.
+        # Fail closed: a missing entity_id config, unparseable XML, absent <Issuer>
+        # element, or any mismatch all result in a hard rejection.  Previously the
+        # check used `if _xml_bytes:` and `if response_issuer:` guards that caused
+        # it to silently pass when the XML was unavailable or the element was missing
+        # — allowing a crafted response without an Issuer to bypass tenant binding.
         configured_entity_id = getattr(sso_settings, 'entity_id', '') or ''
         if not configured_entity_id:
             logger.error(f"SAML ACS: entity_id not configured for company {company_id}")
             return HttpResponseForbidden("SSO misconfigured — contact your administrator.")
-        if configured_entity_id:
-            try:
-                import xml.etree.ElementTree as _ET
-                _ns = {'saml': 'urn:oasis:names:tc:SAML:2.0:assertion'}
-                _xml_bytes = auth.get_last_response_in_xml()
-                if _xml_bytes:
-                    _root = _ET.fromstring(_xml_bytes if isinstance(_xml_bytes, bytes) else _xml_bytes.encode())
-                    _issuer_el = _root.find('.//{urn:oasis:names:tc:SAML:2.0:assertion}Issuer')
-                    response_issuer = _issuer_el.text.strip() if _issuer_el is not None and _issuer_el.text else ''
-                    if response_issuer and response_issuer != configured_entity_id:
-                        logger.warning(f"SAML ACS: issuer mismatch for company {company_id} — expected {configured_entity_id}, got {response_issuer}")
-                        return HttpResponseForbidden("SAML authentication failed.")
-            except Exception as _saml_exc:
-                logger.error(f"SAML issuer parse error for company {company_id}: {_saml_exc}")
+        try:
+            import xml.etree.ElementTree as _ET
+            _xml_bytes = auth.get_last_response_in_xml()
+            if not _xml_bytes:
+                logger.error(f"SAML ACS: no response XML available for company {company_id}")
                 return HttpResponseForbidden("SAML authentication failed.")
+            _root = _ET.fromstring(_xml_bytes if isinstance(_xml_bytes, bytes) else _xml_bytes.encode())
+            _issuer_el = _root.find('.//{urn:oasis:names:tc:SAML:2.0:assertion}Issuer')
+            if _issuer_el is None or not (_issuer_el.text or '').strip():
+                logger.error(f"SAML ACS: missing or empty <Issuer> element for company {company_id}")
+                return HttpResponseForbidden("SAML authentication failed.")
+            response_issuer = _issuer_el.text.strip()
+            if response_issuer != configured_entity_id:
+                logger.warning(
+                    f"SAML ACS: issuer mismatch for company {company_id} — "
+                    f"expected {configured_entity_id!r}, got {response_issuer!r}"
+                )
+                return HttpResponseForbidden("SAML authentication failed.")
+        except Exception as _saml_exc:
+            logger.error(f"SAML issuer verification error for company {company_id}: {_saml_exc}")
+            return HttpResponseForbidden("SAML authentication failed.")
 
         # JIT Provisioning
         user_data = auth.get_attributes()
@@ -1001,7 +1026,7 @@ def sso_acs_legacy(request):
 def sso_metadata(request):
     """Expose SP Metadata XML."""
     if getattr(settings, 'RATE_LIMIT_ENABLED', True):
-        ip = request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR', 'unknown')).split(',')[-1].strip()
+        ip = _get_client_ip(request)
         rl_key = f"rl:sso_metadata:{ip}"
         attempts = cache.get(rl_key, 0)
         if attempts >= 20:
@@ -1111,7 +1136,7 @@ def forgot_password(request):
     """
     # --- Rate Limiting ---
     if getattr(settings, 'RATE_LIMIT_ENABLED', True):
-        ip = request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR', 'unknown')).split(',')[-1].strip()
+        ip = _get_client_ip(request)
         rl_key = f"rl:forgot_pw:{ip}"
         attempts = cache.get(rl_key, 0)
         if attempts >= 3:
@@ -1173,7 +1198,7 @@ def reset_password(request):
     """
     # --- Rate Limiting ---
     if getattr(settings, 'RATE_LIMIT_ENABLED', True):
-        ip = request.META.get('HTTP_X_FORWARDED_FOR', request.META.get('REMOTE_ADDR', 'unknown')).split(',')[-1].strip()
+        ip = _get_client_ip(request)
         rl_key = f"rl:reset_pw:{ip}"
         attempts = cache.get(rl_key, 0)
         if attempts >= 5:
@@ -1220,7 +1245,9 @@ def reset_password(request):
             for outstanding_token in OutstandingToken.objects.filter(user=user):
                 BlacklistedToken.objects.get_or_create(token=outstanding_token)
         except Exception:
-            pass
+            # Non-fatal: simplejwt blacklist app may not be installed.
+            # Log so that token-not-revoked failures are visible in monitoring.
+            logger.warning("reset_password: failed to blacklist simplejwt tokens for user %s", user.pk, exc_info=True)
 
         logger.info(f"PASSWORD RESET SUCCESS: User={user.username}")
         return JsonResponse({'ok': True, 'message': 'Password has been reset successfully'})
