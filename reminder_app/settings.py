@@ -105,6 +105,7 @@ OTP_TOTP_TOLERANCE = 1  # Allow 30s drift
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'app.middleware.AdminIPRestrictionMiddleware',  # IP allowlist before any admin processing
     'whitenoise.middleware.WhiteNoiseMiddleware', # For serving static files in production
     'csp.middleware.CSPMiddleware',
     'django_permissions_policy.PermissionsPolicyMiddleware',
