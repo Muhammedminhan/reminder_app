@@ -17,6 +17,6 @@ class ReminderModelTest(TestCase):
         r = Reminder(title="Pay invoice", receiver_email="a@b.com")
         self.assertEqual(str(r), "Pay invoice")
 
-    def test_is_active_no_end_date(self):
+    def test_is_before_end_date_no_end_date(self):
         r = Reminder(title="No end", receiver_email="a@b.com")
-        self.assertTrue(r.is_active())
+        self.assertTrue(r.is_before_end_date())

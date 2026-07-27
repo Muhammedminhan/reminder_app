@@ -107,9 +107,9 @@ class Command(BaseCommand):
             )
             self.stdout.write(self.style.SUCCESS("✅ Reminder instance created successfully"))
             
-            # Test the is_active method
-            is_active = reminder.is_active()
-            self.stdout.write(self.style.SUCCESS(f"✅ is_active() method works: {is_active}"))
+            # Test the is_before_end_date method
+            is_active = reminder.is_before_end_date()
+            self.stdout.write(self.style.SUCCESS(f"✅ is_before_end_date() method works: {is_active}"))
             
             return True
         except Exception as e:
