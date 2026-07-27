@@ -816,7 +816,12 @@ class Query(graphene.ObjectType):
         user = get_authenticated_user(info)
         if not user:
             return []
-        qs = ReminderDelivery.objects.filter(reminder__company=user.company)
+        if user.is_superuser:
+            qs = ReminderDelivery.objects.all()
+        elif getattr(user, 'is_staff', False):
+            qs = ReminderDelivery.objects.filter(reminder__company=user.company)
+        else:
+            qs = ReminderDelivery.objects.filter(reminder__created_by=user)
         if reminder_id:
             qs = qs.filter(reminder_id=reminder_id)
         return qs.all()
@@ -1061,8 +1066,14 @@ class UpdateReminder(graphene.Mutation):
         if not user:
             raise Exception('Authentication required')
         qs = Reminder.objects.all()
-        if not user.is_superuser and getattr(user, 'company_id', None):
+        if user.is_superuser:
+            pass
+        elif getattr(user, 'is_staff', False) and getattr(user, 'company_id', None):
             qs = qs.filter(company_id=user.company_id)
+        elif getattr(user, 'company_id', None):
+            qs = qs.filter(company_id=user.company_id, created_by=user)
+        else:
+            qs = qs.none()
         reminder = qs.filter(pk=id).first()
         if not reminder:
             raise Exception('Reminder not found')
@@ -1113,8 +1124,14 @@ class DeleteReminder(graphene.Mutation):
         if not user:
             raise Exception('Authentication required')
         qs = Reminder.objects.all()
-        if not user.is_superuser and getattr(user, 'company_id', None):
+        if user.is_superuser:
+            pass
+        elif getattr(user, 'is_staff', False) and getattr(user, 'company_id', None):
             qs = qs.filter(company_id=user.company_id)
+        elif getattr(user, 'company_id', None):
+            qs = qs.filter(company_id=user.company_id, created_by=user)
+        else:
+            qs = qs.none()
         reminder = qs.filter(pk=id).first()
         if not reminder:
             raise Exception('Reminder not found')
