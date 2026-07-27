@@ -13,6 +13,7 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 AUTH_USER_MODEL = 'app.User'
 
 import os
+import sys
 from pathlib import Path
 from decouple import config
 import logging
@@ -332,6 +333,8 @@ SECURE_HSTS_PRELOAD = True
 
 # Production SSL and Cookies (secure defaults)
 SECURE_SSL_REDIRECT = config('SECURE_SSL_REDIRECT', default=not DEBUG, cast=bool)
+if 'test' in sys.argv or any('pytest' in a for a in sys.argv):
+    SECURE_SSL_REDIRECT = False
 # Ensure cookies are secure in prod or if explicitly requested
 SESSION_COOKIE_SAMESITE = 'Strict'
 CSRF_COOKIE_SAMESITE = 'Strict'

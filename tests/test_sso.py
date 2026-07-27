@@ -37,7 +37,7 @@ class SSOTestCase(TestCase):
         mock_instance = MockAuth.return_value
         mock_instance.login.return_value = "https://idp.example.com/sso?SAMLRequest=..."
         
-        url = reverse('sso_login', args=['acme'])
+        url = reverse('sso_login', args=['acme.com'])
         response = self.client.get(url)
         
         self.assertEqual(response.status_code, 302)
