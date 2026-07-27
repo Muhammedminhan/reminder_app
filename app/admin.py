@@ -298,7 +298,7 @@ class CustomUserAdmin(BaseUserAdmin):
                     try:
                         company_field.empty_label = None
                     except Exception:
-                        pass
+                        logger.debug("admin: could not clear empty_label on company field", exc_info=True)
                     # Overwrite choices explicitly to avoid blank insertion by widget
                     company_field.widget.choices = [(company.pk, str(company))]
             # Do NOT remove 'groups' now; restrict queryset
@@ -678,7 +678,7 @@ class ReminderAdmin(admin.ModelAdmin):
                 if (not obj) or (not getattr(obj, 'sender_name', None)):
                     form.base_fields['sender_name'].initial = default_name
         except Exception:
-            pass
+            logger.debug("admin: get_form sender_name pre-fill failed", exc_info=True)
         return form
 
 
@@ -899,7 +899,7 @@ class SendGridDomainAuthAdmin(admin.ModelAdmin):
                     if isinstance(obj.dns_records, dict):
                         combined_records.update(obj.dns_records)
                 except Exception:
-                    pass
+                    logger.warning("admin: could not read existing dns_records for domain %s", getattr(obj, 'domain', '?'), exc_info=True)
                 combined_records.update(new_sendgrid_records)
 
                 if not obj.site_verified:

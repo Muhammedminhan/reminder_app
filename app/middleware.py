@@ -1,3 +1,4 @@
+import ipaddress
 import os
 import uuid
 from django.shortcuts import redirect
@@ -12,14 +13,31 @@ def _get_admin_prefix():
     return '/' + os.environ.get('DJANGO_ADMIN_URL', 'adrian-holovaty').strip('/')
 
 
+def _parse_allowed_ips(raw: str):
+    """Return a list of ip_address / ip_network objects parsed from a CSV string."""
+    entries = []
+    for token in raw.split(','):
+        token = token.strip()
+        if not token:
+            continue
+        try:
+            entries.append(ipaddress.ip_network(token, strict=False))
+        except ValueError:
+            pass  # skip malformed entries; logged at startup via Django check
+    return entries or [
+        ipaddress.ip_network('127.0.0.1/32'),
+        ipaddress.ip_network('::1/128'),
+    ]
+
+
 class AdminIPRestrictionMiddleware:
     """
     Restrict access to the admin panel to an explicit IP allowlist.
 
     Set ADMIN_ALLOWED_IPS as a comma-separated list of IPv4/IPv6 addresses
-    in the environment (e.g. "203.0.113.5,10.0.0.0/8").  When the variable
-    is absent or empty, the admin is accessible from localhost only
-    (127.0.0.1 and ::1).
+    or CIDR ranges in the environment (e.g. "203.0.113.5,10.0.0.0/8").
+    When the variable is absent or empty the admin is accessible from
+    localhost only (127.0.0.1 and ::1).
 
     Disallowed requests receive Http404 — identical to a wrong URL — so the
     existence of the admin panel is not revealed to outside observers.
@@ -28,14 +46,20 @@ class AdminIPRestrictionMiddleware:
     def __init__(self, get_response):
         self.get_response = get_response
         raw = os.environ.get('ADMIN_ALLOWED_IPS', '').strip()
-        self._allowed = {ip.strip() for ip in raw.split(',') if ip.strip()} or {'127.0.0.1', '::1'}
+        self._networks = _parse_allowed_ips(raw)
+
+    def _ip_allowed(self, client_ip: str) -> bool:
+        try:
+            addr = ipaddress.ip_address(client_ip)
+        except ValueError:
+            return False
+        return any(addr in net for net in self._networks)
 
     def __call__(self, request):
         prefix = _get_admin_prefix()
         if request.path.startswith(prefix) or request.path.rstrip('/') == prefix.rstrip('/'):
             from .utils import get_client_ip
-            client_ip = get_client_ip(request)
-            if client_ip not in self._allowed:
+            if not self._ip_allowed(get_client_ip(request)):
                 raise Http404
         return self.get_response(request)
 
